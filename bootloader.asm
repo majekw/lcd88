@@ -253,8 +253,6 @@ boot_rx_char3:
 ;
 ; Make something with 128B of data in RAM
 boot_block_process:
-		;rcall	boot_decrypt
-		
 		ldi	YL,low(REC_BUF)	;prepare buffer address
 		ldi	YH,high(REC_BUF)
 		ldi	temp,128		;how many bytes are to write
@@ -322,33 +320,6 @@ boot_spm:
 		spm
 		ret
 ;
-
-;
-; # decrypt
-;boot_decrypt:
-;		ldi	YL,low(WRITE_BUF)	;destination buffer
-;		ldi	YH,high(WRITE_BUF)
-;		ldi	XL,low(REC_BUF)		;source buffer
-;		ldi	XH,high(REC_BUF)	;it's 0...
-;		ldi	temp2,128		;bytes count
-;		ldi	spmcrval,poczatek	;seed for xor
-;boot_decrypt1:
-;		;calculate new address
-;		subi	XL,-mieszacz		;add XL,mieszacz!
-;		andi	XL,0x7F			;modulo 128
-;		ld	temp,X			;get byte
-;		eor	spmcrval,temp		;decrypt xor
-;		st	Y+,spmcrval		;store decrypted information
-;		
-;		mov	spmcrval,temp		;new seed (last value)
-;		swap	spmcrval
-;		
-;		dec	temp2
-;		brne	boot_decrypt1
-;		
-;		ret
-;
-
 
 	
 ;
