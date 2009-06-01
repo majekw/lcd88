@@ -326,7 +326,7 @@ boot_spm:
 ; ########## static data ###########
 ; #		
 boot_banner1:
-		.db	"Bootloader v.1.1 (C) Marek Wodzinski",13,10
+		.db	13,10,"Bootloader v.1.2 (C) Marek Wodzinski",13,10
 		.db	"Press B for options or wait 2s for normal boot.",13,10,0
 boot_banner2:
 		.db	"timed out... booting...",13,10,0
