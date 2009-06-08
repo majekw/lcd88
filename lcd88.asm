@@ -6,10 +6,14 @@
 ;.equ	ZEGAR=8000000		;clock speed (CLK!)
 ;.equ	ZEGAR=7372800		;docelowo!
 .equ	ZEGAR=11059200
-.equ	ZEGARFIX=229
+.equ	ZEGAR_MAX=173
+.equ	ZEGAR_KOREKTA=-1
+.equ	ZEGAR_COILEKOREKTA=5
+.equ	LCD_PWM=150000
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
-.equ	LCD_X=176
-.equ	LCD_Y=132
+
+;.equ	LCD_X=176
+;.equ	LCD_Y=132
 ;.equ	RS_BUF_SIZE=64		;wielkosc bufora dla rs-a
 
 
@@ -54,15 +58,9 @@
 .def		itemp3=r6
 .def		itemp4=r7
 .def		t2fix=r8
-.def		temp5=r9
-.def		temp6=r10
-.def		temp7=r11
-;.def		rsptr1=r18
-;.def		rsptr2=r11
-.def		fgcolorl=r12
-.def		fgcolorh=r13
-.def		bgcolorl=r14
-.def		gbcolorh=r15
+;.def		temp5=r9
+;.def		temp6=r10
+;.def		temp7=r11
 .def		temp=r16	;zwykly rejestr tymczasowy
 .def		temp2=r17	;drugi temp
 .def		status=r19
@@ -153,6 +151,20 @@ reset:
 		clr	zero
 		clr	t2fix		;pozwala odmierzac czas dokladnie
 		clr	status		;clear status register
+		
+		;initialize timers
+		;Timer0 - pwm dla pod¶wietlenia LCD, 150kHz, 25% wypelnienia, wyjscie przez OC0B, no prescaling
+		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
+		out	OCR0A,temp
+		ldi	temp,(ZEGAR/LCD_PWM*25/100)	;25%
+		out	OCR0B,temp
+		ldi	temp,(1<<COM0B1)+(1<<WGM01)+(1<<WGM00)	;OC0B out, fast PWM z CTC
+		out	TCCR0A,temp
+		ldi	temp,(1<<WGM02)+(1<<CS00)
+		out	TCCR0B,temp
+		sbi	DDRD,PD5
+		;Timer1 - pwm for PPM
+		;Timer2 - odliczanie czasu
 
 main_loop:
 		rjmp	main_loop
@@ -180,10 +192,10 @@ waitms1_1:
 ; #
 
 ;8x8
-font_8x8_spec:
-		.db	low(font_8x8<<1),high(font_8x8<<1),8,0,0,0,0,8,8,32,127,0
-font_8x8:
-.include "font_8x8r.inc"
+;font_8x8_spec:
+;		.db	low(font_8x8<<1),high(font_8x8<<1),8,0,0,0,0,8,8,32,127,0
+;font_8x8:
+;.include "font_8x8r.inc"
 
 ;10x18
 ;font_10x18_spec:
@@ -214,31 +226,6 @@ font_8x8:
 
 ; ############ ZMIENNE ####################
 .dseg
-;rs_bufor:	.byte	RS_BUF_SIZE	;buffer for rs232
-;actual font specification
-font_mem_start:	.byte	2	;font address in flash
-font_bpc:	.byte	1	;bytes per char
-font_margin_x:	.byte	1	;font margin from left
-font_margin_y:	.byte	1	;font margin from top
-font_space_x:	.byte	1	;horizontal space between chars
-font_space_y:	.byte	1	;vertical space between chars
-font_h:		.byte	1	;font height
-font_w:		.byte	1	;font width
-font_char_start: .byte	1	;start char
-font_char_end:	.byte	1	;last char in font
-font_scale_x:	.byte	1	;scale font xN
-font_scale_y:	.byte	1	;
-font_x:		.byte	1	;coords of next char (pixel)
-font_y:		.byte	1
-;bar graphs
-bar_graph:	.byte	10*16	;16 bar graphs
-				;4 - x1,y1,x2,y2
-				;1 - value
-				;1 - type (hor/vert, outline)
-				;2 - bgcolor
-				;2 - fgcolor
-font_palette:	.byte	32	;palette cache for bitmap drawing
-
 
 ;
 ; ############ EEPROM #####################
@@ -249,7 +236,3 @@ ee_sig:		.db	0x55,0xAA
 .org	256
 eeconfig:
 rs_speed:	.db	DEFAULT_SPEED	;9600
-font_config:	.db	0,0,0,0,0,0,0,0,0,0,0
-		.db	0,0,0,0,0,0,0,0,0,0,0
-		.db	0,0,0,0,0,0,0,0,0,0,0
-		.db	0,0,0,0,0,0,0,0,0,0,0

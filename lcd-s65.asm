@@ -27,7 +27,8 @@
 ;.define compile_lcd_test ;draw some pattern on whole screen
 ;.define compile_circle	;drawing circles
 .define compile_line	;drawing lines in any direction
-;.define compile_text	;drawing text
+.define compile_text	;drawing text
+;.define lcd_text_rotated
 ;.define soft_spi	;use software spi
 ; #
 ; ##### CONFIG FEATURES ####################################
@@ -61,13 +62,19 @@
 
 
 ; text parameters
-.equ		DISP_W=132
-.equ		DISP_H=176
 .equ		CHAR_H=8
 .equ		CHAR_W=8
+.ifndef lcd_text_rotated
+.equ		DISP_W=132
+.equ		DISP_H=176
 .equ		TEXT_COL=16
 .equ		TEXT_ROW=22
-
+.else
+.equ		DISP_W=176
+.equ		DISP_H=132
+.equ		TEXT_COL=22
+.equ		TEXT_ROW=16
+.endif
 
 ; colors
 .equ		COLOR_BLACK=	0x0000
@@ -550,7 +557,11 @@ lcd_text_ram:
 ;
 
 lcd_font:
+.ifndef lcd_text_rotated
 .include	"font_8x8.inc"
+.else
+.include	"font_8x8r.inc"
+.endif
 
 .endif
 
