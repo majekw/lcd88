@@ -9,6 +9,9 @@
 ; 2007.11.14	- fork from lcd-s65 to support only model specific functions
 ; 2007.11.15	- finished most of porting
 ;		- moved back lcd_char to main file
+; 2009.06.09	- fix assume that spi_tx doesn't destroy temp (broken after
+;		  porting to mega88)
+; 2009.06.10	- added rotated coordinates (based on global lcd_rotate)
 
 ; commands definitions
 .define		orient_normal		; normal orientation
@@ -108,13 +111,15 @@ lcd_set_area:
 		cbi	LCD_PORT_CS,LCD_CS	;chip select
 		sbi	LCD_PORT_RS,LCD_RS	;command
 		m_lcd_cmd_const	lcd_memwr,8
-		
-		ldi	temp,0x08		;y1
+
+.ifndef lcd_rotated		;normal
+		ldi	temp,0x08		;x1
 		rcall	spi_tx
 		lds	temp,lcd_arg1
 		rcall	spi_tx
 		
-		lds	temp2,lcd_arg3		;y2=y1+dy-1
+		lds	temp2,lcd_arg3		;x2=x1+dx-1
+		lds	temp,lcd_arg1
 		add	temp2,temp
 		dec	temp2
 		ldi	temp,0x09
@@ -122,19 +127,49 @@ lcd_set_area:
 		mov	temp,temp2
 		rcall	spi_tx
 		
-		ldi	temp,0x0A		;x1
+		ldi	temp,0x0A		;y1
 		rcall	spi_tx
 		lds	temp,lcd_arg2
 		rcall	spi_tx
 		
-		lds	temp2,lcd_arg4		;x2=x1+dx-1
+		lds	temp2,lcd_arg4		;y2=y1+dy-1
+		lds	temp,lcd_arg2
 		add	temp2,temp
 		dec	temp2
 		ldi	temp,0x0B
 		rcall	spi_tx
 		mov	temp,temp2
 		rcall	spi_tx
+.else		;rotated
+		ldi	temp,0x08		;x1
+		rcall	spi_tx
+		ldi	temp,DISP_H		;x1=DISP_H-y-dy
+		lds	temp2,lcd_arg2
+		sub	temp,temp2
+		lds	temp2,lcd_arg4
+		sub	temp,temp2
+		rcall	spi_tx
 		
+		ldi	temp,0x09
+		rcall	spi_tx
+		ldi	temp,DISP_H-1		;x2=DISP_H-1-y
+		lds	temp2,lcd_arg2
+		sub	temp,temp2
+		rcall	spi_tx
+		
+		ldi	temp,0x0A		;y1=x
+		rcall	spi_tx
+		lds	temp,lcd_arg1
+		rcall	spi_tx
+		
+		ldi	temp,0x0B
+		rcall	spi_tx
+		lds	temp2,lcd_arg1		;y2=x+dx-1
+		lds	temp,lcd_arg3
+		add	temp,temp2
+		dec	temp
+		rcall	spi_tx
+.endif
 		cbi	LCD_PORT_RS,LCD_RS	;data
 		
 		sbi	LCD_PORT_CS,LCD_CS	;chip select

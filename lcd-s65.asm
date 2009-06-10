@@ -18,6 +18,7 @@
 ; 2007.11.15	- added lcd_cls (clear screen)
 ;		- moved back lcd_char from hardware dependend includes
 ; 2007.12.17	- made text routines optional
+; 2009.06.08	- changed spi_tx to work on mega88
 
 
 ; ##### CONFIG FEATURES ####################################
@@ -26,9 +27,9 @@
 .define lcd_ls020	;LS020B
 ;.define compile_lcd_test ;draw some pattern on whole screen
 ;.define compile_circle	;drawing circles
-.define compile_line	;drawing lines in any direction
+;.define compile_line	;drawing lines in any direction
 .define compile_text	;drawing text
-;.define lcd_text_rotated
+.define lcd_rotated
 ;.define soft_spi	;use software spi
 ; #
 ; ##### CONFIG FEATURES ####################################
@@ -64,7 +65,7 @@
 ; text parameters
 .equ		CHAR_H=8
 .equ		CHAR_W=8
-.ifndef lcd_text_rotated
+.ifndef lcd_rotated
 .equ		DISP_W=132
 .equ		DISP_H=176
 .equ		TEXT_COL=16
@@ -340,7 +341,7 @@ spi_tx:
 .ifndef soft_spi
 		;hardware spi
 		out	SPDR,temp	; send over SPI		;2
-spi_tx1:	lds	temp,SPSR
+spi_tx1:	in	temp,SPSR
 		sbrs	temp,SPIF	; wait for empty SPDR	;2
 		rjmp	spi_tx1					;2
 .else
@@ -484,7 +485,11 @@ lcd_char1:
 		ldi	temp,CHAR_W
 		mov	temp4,temp
 lcd_char2:
+.ifndef lcd_rotated
 		rol	r0
+.else
+		lsr	r0
+.endif
 		brcc	lcd_char3	;0 czy 1?
 		lds	temp,lcd_fg_color+1	;color high byte
 		rcall	spi_tx
@@ -557,7 +562,7 @@ lcd_text_ram:
 ;
 
 lcd_font:
-.ifndef lcd_text_rotated
+.ifndef lcd_rotated
 .include	"font_8x8.inc"
 .else
 .include	"font_8x8r.inc"

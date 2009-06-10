@@ -1,3 +1,12 @@
+; (C) 2009 Marek Wodzinski
+; new ppm coder with color lcd
+;
+; Changelog
+; 2009.05.31	- initial code
+; 2009.06.01	- added lcd code (non working)
+; 2009.06.08	- timer0 and 2 section, working pwm for lcd backlight
+; 2009.06.10	- working lcd code, added rotated mode, fixed brightness of backlight
+
 .nolist
 .include "m88def.inc"		;standardowy nag³ówek do atmega8
 
@@ -6,9 +15,7 @@
 ;.equ	ZEGAR=8000000		;clock speed (CLK!)
 ;.equ	ZEGAR=7372800		;docelowo!
 .equ	ZEGAR=11059200
-.equ	ZEGAR_MAX=173
-.equ	ZEGAR_KOREKTA=-1
-.equ	ZEGAR_COILEKOREKTA=5
+.equ	ZEGAR_MAX=ZEGAR/64/1000
 .equ	LCD_PWM=150000
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
 
@@ -57,7 +64,7 @@
 .def		temp4=r5
 .def		itemp3=r6
 .def		itemp4=r7
-.def		t2fix=r8
+;.def		t2fix=r8
 ;.def		temp5=r9
 ;.def		temp6=r10
 ;.def		temp7=r11
@@ -113,7 +120,7 @@ ram_temp:	.byte	30	;general purpose temporary space, used also in LCD and MATH
 		reti		;PCINT1
 		reti		;PCINT2
 		reti		;WDT
-		reti		;Timer2 Compare Match A
+		rjmp	t2cm	;Timer2 Compare Match A
 		reti		;Timer2 Compare Match B
 		reti		;Timer2 Overflow
 		reti		;Timer1 Capture
@@ -149,22 +156,65 @@ reset:
 		
 		;initialize variables
 		clr	zero
-		clr	t2fix		;pozwala odmierzac czas dokladnie
 		clr	status		;clear status register
 		
 		;initialize timers
 		;Timer0 - pwm dla pod¶wietlenia LCD, 150kHz, 25% wypelnienia, wyjscie przez OC0B, no prescaling
 		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
 		out	OCR0A,temp
-		ldi	temp,(ZEGAR/LCD_PWM*25/100)	;25%
+		ldi	temp,(ZEGAR/LCD_PWM*75/100)	;25%
 		out	OCR0B,temp
 		ldi	temp,(1<<COM0B1)+(1<<WGM01)+(1<<WGM00)	;OC0B out, fast PWM z CTC
 		out	TCCR0A,temp
 		ldi	temp,(1<<WGM02)+(1<<CS00)
 		out	TCCR0B,temp
 		sbi	DDRD,PD5
+		
 		;Timer1 - pwm for PPM
-		;Timer2 - odliczanie czasu
+		
+		;Timer2 - odliczanie czasu, ~1kHz, ctc, przerwania
+		ldi	temp,(1<<WGM21)	;ctc
+		sts	TCCR2A,temp
+		ldi	temp,(1<<CS22)	;/64
+		sts	TCCR2B,temp
+		ldi	temp,ZEGAR_MAX	;liczymy do ZEGAR_MAX
+		sts	OCR2A,temp
+		sts	ASSR,zero	;na pewno synchroniczny
+		ldi	temp,(1<<OCIE2A)	;przerwanie przy przepelnieniu licznika
+		sts	TIMSK2,temp
+
+
+		sei	;enable interrupts
+
+		;initialize lcd
+		sbi	DDRB,PB2	;SS - must be output
+		sbi	DDRB,PB5	;SCK: output
+		sbi	DDRB,PB3	;MOSI: output
+		sbi	LCD_DDR_LED,LCD_LED	;backlight: output
+		
+		waitms	250
+		rcall	lcd_init
+		m_lcd_set_bg	COLOR_YELLOW
+		m_lcd_set_fg	COLOR_RED
+		m_lcd_fill_rect	10,10,20,20
+		
+		m_lcd_set_fg	COLOR_BLUE
+		m_lcd_fill_rect	64,64,50,50
+
+		m_lcd_set_fg	COLOR_BLACK
+		m_lcd_fill_rect	122,0,10,176
+		
+		m_lcd_set_bg	COLOR_BLACK
+		m_lcd_set_fg	COLOR_CYAN
+
+		m_lcd_text_pos	0,0
+		m_lcd_text	banner
+;
+		
+		m_lcd_set_bg	COLOR_WHITE	;set default colors
+		m_lcd_set_fg	COLOR_BLACK
+
+
 
 main_loop:
 		rjmp	main_loop
@@ -186,42 +236,32 @@ waitms1_1:
 ;
 
 
+;
+; ############ PRZERWANIA ################
+; #
 
 ;
-; ############ FONTS ######################
+; timer2 compare match A : time counting
+t2cm:
+		in	itemp,SREG
+
+		inc	mscountl		;licznik milisekund dla mswait
+		brne	t2cm_1
+		inc	mscounth
+t2cm_1:		
+		out	SREG,itemp
+		reti
 ; #
-
-;8x8
-;font_8x8_spec:
-;		.db	low(font_8x8<<1),high(font_8x8<<1),8,0,0,0,0,8,8,32,127,0
-;font_8x8:
-;.include "font_8x8r.inc"
-
-;10x18
-;font_10x18_spec:
-;		.db	low(font_10x18<<1),high(font_10x18<<1),23,3,3,0,0,18,10,32,127,0
-;font_10x18:
-;.include "font_10x18.inc"
-
-;5x7
-;font_5x7_spec:
-;		.db	low(font_5x7<<1),high(font_5x7<<1),5,1,2,1,1,7,5,32,127,0
-;font_5x7:
-;.include "font_5x7_small.inc"
-
-;12x22
-;font_12x22_spec:
-;		.db	low(font_12x22<<1),high(font_12x22<<1),33,4,0,0,0,22,12,32,127,0
-;font_12x22:
-;.include "font_sun12x22.inc"
+; ############ END PRZERWANIA ############
+;
 
 
-; #
-; ############ END FONTS ##################
+
+banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
 
 
 ;.include "version.inc"		;include svn version as firmware version
-.include "bootloader.inc"	;needed for flash reprogramming (font storage)
+.include "bootloader.inc"	;needed for flash reprogramming
 
 
 ; ############ ZMIENNE ####################
@@ -236,3 +276,4 @@ ee_sig:		.db	0x55,0xAA
 .org	256
 eeconfig:
 rs_speed:	.db	DEFAULT_SPEED	;9600
+dupa:		.db	ZEGAR_MAX
