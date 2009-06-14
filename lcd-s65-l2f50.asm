@@ -221,9 +221,9 @@ lcd_set_area:
 		rcall	lcd_dat0
 		ldi	temp,0x01
 		rcall	lcd_dat0
-		lds	temp,lcd_arg3	;x2=x+dx
+		lds	temp,lcd_arg3	;x2=x+dx-1
 		add	temp,temp2
-		dec	temp		;EXP
+		dec	temp
 		rcall	lcd_dat0
 		ldi	temp,0x01
 		rcall	lcd_dat0
@@ -232,9 +232,9 @@ lcd_set_area:
 		lds	temp2,lcd_arg2	;y1
 		mov	temp,temp2
 		rcall	lcd_dat0
-		lds	temp,lcd_arg4	;y2
+		lds	temp,lcd_arg4	;y2=y+dy-1
 		add	temp,temp2
-		dec	temp		;EXP
+		dec	temp
 		rcall	lcd_dat0
 		
 		m_lcd_cmd RAMWR	;ram write

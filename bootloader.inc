@@ -5,7 +5,7 @@
 .org	0x0f00
 boot_start:
 
-.org	0x0f80
+.org	0x0f7f
 ; # write blocks to flash
 ; - Z : flash address
 ; - Y : ram address

@@ -10,6 +10,7 @@
 .nolist
 .include "m88def.inc"		;standardowy nag³ówek do atmega8
 
+.define DEBUG
 
 ; ******** STA£E *********
 ;.equ	ZEGAR=8000000		;clock speed (CLK!)
@@ -18,9 +19,21 @@
 .equ	ZEGAR_MAX=ZEGAR/64/1000
 .equ	LCD_PWM=150000
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
+;keyboard
+.equ	KBD_DELAY=32		;debounce for keyboard
+.equ	KBD_PORT_0=PORTD
+.equ	KBD_PIN_0=PIND
+.equ	KBD_DDR_0=DDRD
+.equ	KBD_0=PORTD6
+.equ	KBD_PORT_1=PORTD
+.equ	KBD_PIN_1=PIND
+.equ	KBD_DDR_1=DDRD
+.equ	KBD_1=PORTD7
+.equ	KBD_PORT_2=PORTB
+.equ	KBD_PIN_2=PINB
+.equ	KBD_DDR_2=DDRB
+.equ	KBD_2=PORTB0
 
-;.equ	LCD_X=176
-;.equ	LCD_Y=132
 ;.equ	RS_BUF_SIZE=64		;wielkosc bufora dla rs-a
 
 
@@ -162,7 +175,7 @@ reset:
 		;Timer0 - pwm dla pod¶wietlenia LCD, 150kHz, 25% wypelnienia, wyjscie przez OC0B, no prescaling
 		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
 		out	OCR0A,temp
-		ldi	temp,(ZEGAR/LCD_PWM*75/100)	;25%
+		ldi	temp,(ZEGAR/LCD_PWM*75/100)	;75%
 		out	OCR0B,temp
 		ldi	temp,(1<<COM0B1)+(1<<WGM01)+(1<<WGM00)	;OC0B out, fast PWM z CTC
 		out	TCCR0A,temp
@@ -217,13 +230,26 @@ reset:
 
 
 main_loop:
+.ifdef DEBUG
+		rcall	kbd_debug
+		waitms	25
+.endif
+
+
 		rjmp	main_loop
+banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
+
+
+
+; ######### PODPROGRAMY ###########
+; #
+
 
 ;
 ; # wait X ms
 waitms1:
 		cli
-		sts	TCNT2,zero
+		;sts	TCNT2,zero
 		mov	mscountl,zero
 		mov	mscounth,zero
 		sei
@@ -235,6 +261,52 @@ waitms1_1:
 		ret
 ;
 
+
+;
+; # zamienia liczbe w temp na hexa
+tohex:		andi	temp,0x0f
+		ori	temp,48
+		cpi	temp,58
+		brcs	tohex1
+		push	temp2
+		ldi	temp2,7
+		add	temp,temp2
+		pop	temp2
+tohex1:		ret
+;
+
+
+;
+; # wyswietla wartosci z bajtow klawiatury
+.ifdef DEBUG
+kbd_debug:
+		m_lcd_text_pos	0,5
+		ldi	XL,low(key_0)
+		ldi	XH,high(key_0)
+		ldi	temp2,6
+kbd_debug_1:
+		push	temp2
+		
+		ld	temp,X
+		swap	temp
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		ld	temp,X+
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		
+		pop	temp2
+		dec	temp2
+		brne	kbd_debug_1
+		
+		ret
+.endif
+;	
+
+; #
+; ########## END PODPROGRAMY ##########
 
 ;
 ; ############ PRZERWANIA ################
@@ -249,15 +321,168 @@ t2cm:
 		brne	t2cm_1
 		inc	mscounth
 t2cm_1:		
+		;TODO: trigger PPM, trigger ADC
+		
+		;keyboard
+		sbrc	mscountl,0	;call only on even milisoconds
+		rcall	kbd_scan
+		
 		out	SREG,itemp
 		reti
+;
+
+
+;
+; keyboard scan
+kbd_scan:
+		push	XL					;2
+		push	XH					;2
+		ldi	XL,low(key_0)				;1
+		ldi	XH,high(key_0)				;1
+		cbi	KBD_PORT_0,KBD_0			
+		cbi	KBD_PORT_1,KBD_1			
+		cbi	KBD_PORT_2,KBD_2			
+		
+		;first variant
+		cbi	KBD_DDR_1,KBD_1				;2
+		cbi	KBD_DDR_2,KBD_2				;2
+		sbi	KBD_DDR_0,KBD_0				;2
+
+		ld	itemp,X		;key_0			;2
+		sbis	KBD_PIN_1,KBD_1				;1/2
+		rjmp	kbd_scan_1				;2
+		
+		tst	itemp		;juz zero?		;1
+		breq	kbd_scan_2				;1/2
+		dec	itemp					;1
+		rjmp	kbd_scan_2				;2
+kbd_scan_1:
+		inc	itemp					;1
+		cpi	itemp,KBD_DELAY				;1
+		brcs	kbd_scan_2				;1/2
+		ldi	itemp,KBD_DELAY				;1
+kbd_scan_2:
+		st	X+,itemp				;2 = 11/11
+		
+		ld	itemp,X		;key_1	
+		sbis	KBD_PIN_2,KBD_2
+		rjmp	kbd_scan_3
+		
+		tst	itemp
+		breq	kbd_scan_4
+		dec	itemp
+		rjmp	kbd_scan_4
+kbd_scan_3:
+		inc	itemp
+		cpi	itemp,KBD_DELAY
+		brcs	kbd_scan_4
+		ldi	itemp,KBD_DELAY
+kbd_scan_4:
+		st	X+,itemp				;11
+		
+
+		;second variant
+		cbi	KBD_DDR_0,KBD_0
+		cbi	KBD_DDR_2,KBD_2
+		sbi	KBD_DDR_1,KBD_1
+
+		ld	itemp,X		;key_2
+		sbis	KBD_PIN_0,KBD_0
+		rjmp	kbd_scan_5
+		
+		tst	itemp		;juz zero?
+		breq	kbd_scan_6
+		dec	itemp
+		rjmp	kbd_scan_6
+kbd_scan_5:
+		inc	itemp
+		cpi	itemp,KBD_DELAY
+		brcs	kbd_scan_6
+		ldi	itemp,KBD_DELAY
+kbd_scan_6:
+		st	X+,itemp				;11
+		
+		ld	itemp,X		;key_3
+		sbis	KBD_PIN_2,KBD_2
+		rjmp	kbd_scan_7
+		
+		tst	itemp
+		breq	kbd_scan_8
+		dec	itemp
+		rjmp	kbd_scan_8
+kbd_scan_7:
+		inc	itemp
+		cpi	itemp,KBD_DELAY
+		brcs	kbd_scan_8
+		ldi	itemp,KBD_DELAY
+kbd_scan_8:
+		st	X+,itemp				;11
+
+
+		;third variant		
+		cbi	KBD_DDR_0,KBD_0
+		cbi	KBD_DDR_1,KBD_1
+		sbi	KBD_DDR_2,KBD_2
+
+		ld	itemp,X		;key_4
+		sbis	KBD_PIN_0,KBD_0
+		rjmp	kbd_scan_9
+		
+		tst	itemp		;juz zero?
+		breq	kbd_scan_10
+		dec	itemp
+		rjmp	kbd_scan_10
+kbd_scan_9:
+		inc	itemp
+		cpi	itemp,KBD_DELAY
+		brcs	kbd_scan_10
+		ldi	itemp,KBD_DELAY
+kbd_scan_10:
+		st	X+,itemp				;11
+		
+		ld	itemp,X		;key_5
+		sbis	KBD_PIN_1,KBD_1
+		rjmp	kbd_scan_11
+		
+		tst	itemp
+		breq	kbd_scan_12
+		dec	itemp
+		rjmp	kbd_scan_12
+kbd_scan_11:
+		inc	itemp
+		cpi	itemp,KBD_DELAY
+		brcs	kbd_scan_12
+		ldi	itemp,KBD_DELAY
+kbd_scan_12:
+		st	X+,itemp				;11
+		
+		pop	XH					;2
+		pop	XL					;2
+		ret						;4+3(call)
+;								;=117
+
+
+.dseg
+key_up:
+key_0:		.byte	1
+key_down:
+key_1:		.byte	1
+key_esc:
+key_2:		.byte	1
+key_left:
+key_3:		.byte	1
+key_enter:
+key_4:		.byte	1
+key_right:
+key_5:		.byte	1
+.cseg
+
 ; #
 ; ############ END PRZERWANIA ############
 ;
 
 
 
-banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
 
 
 ;.include "version.inc"		;include svn version as firmware version
@@ -272,8 +497,3 @@ banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
 ; #
 .eseg
 .org	0
-ee_sig:		.db	0x55,0xAA
-.org	256
-eeconfig:
-rs_speed:	.db	DEFAULT_SPEED	;9600
-dupa:		.db	ZEGAR_MAX

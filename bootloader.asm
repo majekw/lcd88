@@ -72,6 +72,7 @@ boot_start:
 		
 		;initialize UART
 		cbi	DDRD,PORTD0	;rx: input
+		sbi	PORTD,PORTD0	;rx: pull up
 		sbi	DDRD,PORTD1	;tx: output
 		
 		ldi	temp,0		;no x2 speed, no multiprocessor comm.
@@ -172,7 +173,10 @@ xmodem_receive1:
 		brne	xmodem_start
 		
 		;block received ok
-		rcall	boot_block_process	;do something
+		ldi	YL,low(REC_BUF)	;prepare buffer address
+		ldi	YH,high(REC_BUF)
+		ldi	temp,128		;how many bytes are to write
+		rcall	boot_block_write	;write buffer to flash
 		
 		inc	block		;get next block
 		ldi	response,xmodem_ACK	;send ACK
@@ -246,19 +250,6 @@ boot_rx_char2:
 		clc				;clear carry, temp<-char received
 boot_rx_char3:
 		pop	temp2
-		ret
-;
-
-
-;
-; Make something with 128B of data in RAM
-boot_block_process:
-		ldi	YL,low(REC_BUF)	;prepare buffer address
-		ldi	YH,high(REC_BUF)
-		ldi	temp,128		;how many bytes are to write
-		
-		rcall	boot_block_write
-
 		ret
 ;
 
