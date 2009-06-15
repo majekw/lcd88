@@ -65,6 +65,8 @@
 ; text parameters
 .equ		CHAR_H=8
 .equ		CHAR_W=8
+;.equ		CHAR_H=5
+;.equ		CHAR_W=7
 .ifndef lcd_rotated
 .equ		DISP_W=132
 .equ		DISP_H=176
@@ -75,6 +77,8 @@
 .equ		DISP_H=132
 .equ		TEXT_COL=22
 .equ		TEXT_ROW=16
+;.equ		TEXT_COL=35
+;.equ		TEXT_ROW=18
 .endif
 
 ; colors
@@ -566,6 +570,7 @@ lcd_font:
 .include	"font_8x8.inc"
 .else
 .include	"font_8x8r.inc"
+;.include	"font_5x7_small.inc"
 .endif
 
 .endif

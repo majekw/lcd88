@@ -7,6 +7,10 @@
 ; 2009.06.08	- timer0 and timer2 section, working pwm for lcd backlight
 ; 2009.06.10	- working lcd code, added rotated mode, fixed brightness of backlight
 ; 2009.06.14	- added keyboard scan
+; 2009.06.15	- added single keyboard status byte
+;		- clear ram on reset
+;		- fixed bug (SREG destroyed during keyboard scan)
+;		- added some ram reservations for channels and blocks
 
 
 .nolist
@@ -33,6 +37,12 @@
 .equ	KBD_PIN_2=PINB
 .equ	KBD_DDR_2=DDRB
 .equ	KBD_2=PORTB0
+.equ	KEY_UP=0		;keys in keys var
+.equ	KEY_DOWN=1
+.equ	KEY_LEFT=2
+.equ	KEY_RIGHT=3
+.equ	KEY_ENTER=4
+.equ	KEY_ESC=5
 
 ; ***** REJESTRY *****
 ; r0	roboczy
@@ -163,6 +173,18 @@ reset:
 		clr	zero
 		clr	status		;clear status register
 		
+		;clear ram
+		ldi	XL,low(SRAM_START)
+		ldi	XH,high(SRAM_START)
+		ldi	YL,low(SRAM_SIZE)
+		ldi	YH,high(SRAM_SIZE)
+clear_ram:
+		st	X+,zero
+		dec	YL
+		brne	clear_ram
+		dec	YH
+		brne	clear_ram
+		
 		;initialize timers
 		;Timer0 - pwm dla pod¶wietlenia LCD, 150kHz, 25% wypelnienia, wyjscie przez OC0B, no prescaling
 		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
@@ -207,7 +229,7 @@ reset:
 		m_lcd_fill_rect	64,64,50,50
 
 		m_lcd_set_fg	COLOR_BLACK
-		m_lcd_fill_rect	122,0,10,176
+		m_lcd_fill_rect	0,0,176,10
 		
 		m_lcd_set_bg	COLOR_BLACK
 		m_lcd_set_fg	COLOR_CYAN
@@ -224,7 +246,7 @@ reset:
 main_loop:
 .ifdef DEBUG
 		rcall	kbd_debug
-		waitms	25
+		waitms	5
 .endif
 
 
@@ -293,6 +315,17 @@ kbd_debug_1:
 		dec	temp2
 		brne	kbd_debug_1
 		
+		;chars binary
+		lds	temp,keys
+		swap	temp
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		lds	temp,keys
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		
 		ret
 .endif
 ;	
@@ -308,6 +341,7 @@ kbd_debug_1:
 ; timer2 compare match A : time counting
 t2cm:
 		in	itemp,SREG
+		push	itemp
 
 		inc	mscountl		;licznik milisekund dla mswait
 		brne	t2cm_1
@@ -319,6 +353,7 @@ t2cm_1:
 		sbrc	mscountl,0	;call only on even milisoconds
 		rcall	kbd_scan
 		
+		pop	itemp
 		out	SREG,itemp
 		reti
 ;
@@ -327,7 +362,6 @@ t2cm_1:
 ;
 ; keyboard scan
 kbd_scan:
-		push	itemp
 		push	XL					;2
 		push	XH					;2
 		ldi	XL,low(key_0)				;1
@@ -336,6 +370,8 @@ kbd_scan:
 		cbi	KBD_PORT_1,KBD_1			
 		cbi	KBD_PORT_2,KBD_2			
 		
+		lds	itemp2,keys	;load key status
+		
 		;first variant
 		cbi	KBD_DDR_1,KBD_1				;2
 		cbi	KBD_DDR_2,KBD_2				;2
@@ -343,34 +379,42 @@ kbd_scan:
 
 		ld	itemp,X		;key_0			;2
 		sbis	KBD_PIN_1,KBD_1				;1/2
-		rjmp	kbd_scan_1				;2
+		rjmp	kbd_scan_0_1				;2
 		
 		tst	itemp		;juz zero?		;1
-		breq	kbd_scan_2				;1/2
+		breq	kbd_scan_0_3				;1/2
 		dec	itemp					;1
-		rjmp	kbd_scan_2				;2
-kbd_scan_1:
+		rjmp	kbd_scan_0_2				;2
+kbd_scan_0_3:
+		andi	itemp2,~(1<<KEY_UP)
+		rjmp	kbd_scan_0_2
+kbd_scan_0_1:
 		inc	itemp					;1
 		cpi	itemp,KBD_DELAY				;1
-		brcs	kbd_scan_2				;1/2
+		brcs	kbd_scan_0_2				;1/2
 		ldi	itemp,KBD_DELAY				;1
-kbd_scan_2:
+		ori	itemp2,(1<<KEY_UP)
+kbd_scan_0_2:
 		st	X+,itemp				;2 = 11/11
 		
 		ld	itemp,X		;key_1	
 		sbis	KBD_PIN_2,KBD_2
-		rjmp	kbd_scan_3
+		rjmp	kbd_scan_1_1
 		
 		tst	itemp
-		breq	kbd_scan_4
+		breq	kbd_scan_1_3
 		dec	itemp
-		rjmp	kbd_scan_4
-kbd_scan_3:
+		rjmp	kbd_scan_1_2
+kbd_scan_1_3:
+		andi	itemp2,~(1<<KEY_DOWN)
+		rjmp	kbd_scan_1_2
+kbd_scan_1_1:
 		inc	itemp
 		cpi	itemp,KBD_DELAY
-		brcs	kbd_scan_4
+		brcs	kbd_scan_1_2
 		ldi	itemp,KBD_DELAY
-kbd_scan_4:
+		ori	itemp2,(1<<KEY_DOWN)
+kbd_scan_1_2:
 		st	X+,itemp				;11
 		
 
@@ -381,34 +425,43 @@ kbd_scan_4:
 
 		ld	itemp,X		;key_2
 		sbis	KBD_PIN_0,KBD_0
-		rjmp	kbd_scan_5
+		rjmp	kbd_scan_2_1
 		
 		tst	itemp		;juz zero?
-		breq	kbd_scan_6
+		breq	kbd_scan_2_3
 		dec	itemp
-		rjmp	kbd_scan_6
-kbd_scan_5:
+		rjmp	kbd_scan_2_2
+kbd_scan_2_3:
+		andi	itemp2,~(1<<KEY_ESC)
+		rjmp	kbd_scan_2_2
+kbd_scan_2_1:
 		inc	itemp
 		cpi	itemp,KBD_DELAY
-		brcs	kbd_scan_6
+		brcs	kbd_scan_2_2
 		ldi	itemp,KBD_DELAY
-kbd_scan_6:
+		ori	itemp2,(1<<KEY_ESC)
+kbd_scan_2_2:
 		st	X+,itemp				;11
+		
 		
 		ld	itemp,X		;key_3
 		sbis	KBD_PIN_2,KBD_2
-		rjmp	kbd_scan_7
+		rjmp	kbd_scan_3_1
 		
 		tst	itemp
-		breq	kbd_scan_8
+		breq	kbd_scan_3_3
 		dec	itemp
-		rjmp	kbd_scan_8
-kbd_scan_7:
+		rjmp	kbd_scan_3_2
+kbd_scan_3_3:
+		andi	itemp2,~(1<<KEY_LEFT)
+		rjmp	kbd_scan_3_2
+kbd_scan_3_1:
 		inc	itemp
 		cpi	itemp,KBD_DELAY
-		brcs	kbd_scan_8
+		brcs	kbd_scan_3_2
 		ldi	itemp,KBD_DELAY
-kbd_scan_8:
+		ori	itemp2,(1<<KEY_LEFT)
+kbd_scan_3_2:
 		st	X+,itemp				;11
 
 
@@ -419,54 +472,58 @@ kbd_scan_8:
 
 		ld	itemp,X		;key_4
 		sbis	KBD_PIN_0,KBD_0
-		rjmp	kbd_scan_9
+		rjmp	kbd_scan_4_1
 		
 		tst	itemp		;juz zero?
-		breq	kbd_scan_10
+		breq	kbd_scan_4_3
 		dec	itemp
-		rjmp	kbd_scan_10
-kbd_scan_9:
+		rjmp	kbd_scan_4_2
+kbd_scan_4_3:
+		andi	itemp2,~(1<<KEY_ENTER)
+		rjmp	kbd_scan_4_2
+kbd_scan_4_1:
 		inc	itemp
 		cpi	itemp,KBD_DELAY
-		brcs	kbd_scan_10
+		brcs	kbd_scan_4_2
 		ldi	itemp,KBD_DELAY
-kbd_scan_10:
+		ori	itemp2,(1<<KEY_ENTER)
+kbd_scan_4_2:
 		st	X+,itemp				;11
+		
 		
 		ld	itemp,X		;key_5
 		sbis	KBD_PIN_1,KBD_1
-		rjmp	kbd_scan_11
+		rjmp	kbd_scan_5_1
 		
 		tst	itemp
-		breq	kbd_scan_12
+		breq	kbd_scan_5_3
 		dec	itemp
-		rjmp	kbd_scan_12
-kbd_scan_11:
+		rjmp	kbd_scan_5_2
+kbd_scan_5_3:
+		andi	itemp2,~(1<<KEY_RIGHT)
+		rjmp	kbd_scan_5_2
+kbd_scan_5_1:
 		inc	itemp
 		cpi	itemp,KBD_DELAY
-		brcs	kbd_scan_12
+		brcs	kbd_scan_5_2
 		ldi	itemp,KBD_DELAY
-kbd_scan_12:
+		ori	itemp2,(1<<KEY_RIGHT)
+kbd_scan_5_2:
 		st	X+,itemp				;11
 		
+		sts	keys,itemp2
 		pop	XH					;2
 		pop	XL					;2
-		pop	itemp
 		ret						;4+3(call)
 ;								;=117
 .dseg
-key_up:
-key_0:		.byte	1
-key_down:
-key_1:		.byte	1
-key_esc:
-key_2:		.byte	1
-key_left:
-key_3:		.byte	1
-key_enter:
-key_4:		.byte	1
-key_right:
-key_5:		.byte	1
+keys:		.byte	1	;all keys
+key_0:		.byte	1	;up
+key_1:		.byte	1	;down
+key_2:		.byte	1	;esc
+key_3:		.byte	1	;left
+key_4:		.byte	1	;enter
+key_5:		.byte	1	;right
 .cseg
 
 ; #
@@ -483,7 +540,10 @@ key_5:		.byte	1
 
 ; ############ ZMIENNE ####################
 .dseg
-
+channels:	.byte	512	;max 256 channels
+ch_status:	.byte	30
+blocks:		.byte	256	;max 127 blocks
+wr_tmp:		.byte	128
 ;
 ; ############ EEPROM #####################
 ; #
