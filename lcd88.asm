@@ -4,23 +4,23 @@
 ; Changelog
 ; 2009.05.31	- initial code
 ; 2009.06.01	- added lcd code (non working)
-; 2009.06.08	- timer0 and 2 section, working pwm for lcd backlight
+; 2009.06.08	- timer0 and timer2 section, working pwm for lcd backlight
 ; 2009.06.10	- working lcd code, added rotated mode, fixed brightness of backlight
+; 2009.06.14	- added keyboard scan
+
 
 .nolist
-.include "m88def.inc"		;standardowy nag³ówek do atmega8
+.include "m88def.inc"		;standardowy nag³ówek do atmega88
 
 .define DEBUG
 
 ; ******** STA£E *********
-;.equ	ZEGAR=8000000		;clock speed (CLK!)
-;.equ	ZEGAR=7372800		;docelowo!
 .equ	ZEGAR=11059200
 .equ	ZEGAR_MAX=ZEGAR/64/1000
 .equ	LCD_PWM=150000
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
 ;keyboard
-.equ	KBD_DELAY=32		;debounce for keyboard
+.equ	KBD_DELAY=32		;debounce time for keyboard (*2ms)
 .equ	KBD_PORT_0=PORTD
 .equ	KBD_PIN_0=PIND
 .equ	KBD_DDR_0=DDRD
@@ -33,9 +33,6 @@
 .equ	KBD_PIN_2=PINB
 .equ	KBD_DDR_2=DDRB
 .equ	KBD_2=PORTB0
-
-;.equ	RS_BUF_SIZE=64		;wielkosc bufora dla rs-a
-
 
 ; ***** REJESTRY *****
 ; r0	roboczy
@@ -93,11 +90,6 @@
 
 ; bity w rejestrze 'status'
 ; status
-.equ		WRAP_LINE=0	;text wrap after whole line
-.equ		WRAP_SCR=1	;wrap to first line after last line
-.equ		WDT_EN=2	;set if watchdog enabled
-.equ		WDT_ANY=3	;set if any char resets watchdog timer, else only special sequence can reset
-.equ		CRLF=4		;add lf after cr
 
 
 
@@ -117,7 +109,7 @@
 
 ; # important global ram variables
 .dseg
-ram_temp:	.byte	30	;general purpose temporary space, used also in LCD and MATH
+ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and MATH
 .cseg
 
 
@@ -335,6 +327,7 @@ t2cm_1:
 ;
 ; keyboard scan
 kbd_scan:
+		push	itemp
 		push	XL					;2
 		push	XH					;2
 		ldi	XL,low(key_0)				;1
@@ -458,10 +451,9 @@ kbd_scan_12:
 		
 		pop	XH					;2
 		pop	XL					;2
+		pop	itemp
 		ret						;4+3(call)
 ;								;=117
-
-
 .dseg
 key_up:
 key_0:		.byte	1
