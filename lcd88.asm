@@ -330,6 +330,11 @@ kbd_debug_1:
 .endif
 ;	
 
+
+;
+; ####### math #########
+;
+;
 ; #
 ; ########## END PODPROGRAMY ##########
 
@@ -544,6 +549,7 @@ channels:	.byte	512	;max 256 channels
 ch_status:	.byte	30
 blocks:		.byte	256	;max 127 blocks
 wr_tmp:		.byte	128
+math_buf:	.byte	16
 ;
 ; ############ EEPROM #####################
 ; #
