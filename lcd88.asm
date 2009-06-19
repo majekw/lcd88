@@ -14,7 +14,7 @@
 
 
 .nolist
-.include "m88def.inc"		;standardowy nag³ówek do atmega88
+.include "m88def.inc"		;standard header for atmega88
 
 .define DEBUG
 
