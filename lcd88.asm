@@ -11,6 +11,8 @@
 ;		- clear ram on reset
 ;		- fixed bug (SREG destroyed during keyboard scan)
 ;		- added some ram reservations for channels and blocks
+; 2009.07.10	- ADC init, start
+;		- get values from adc, calculate with calibration data and store to channels space
 
 
 .nolist
@@ -23,8 +25,16 @@
 .equ	ZEGAR_MAX=ZEGAR/64/1000
 .equ	LCD_PWM=150000
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
+.equ	CHANNELS_MAX=256
+.equ	BLOCKS_MAX=128		;253 is absolute max
+.equ	VERSION=1		;must be changed if eeprom format will change
+.equ	TRIM_BYTES=10
+;numbers
+.equ	L_ZERO=0
+.equ	L_JEDEN=0b0000010000000000	;1 in 6.10
+.equ	L_MJEDEN=0b1111110000000000	;-1 in 6.10
 ;keyboard
-.equ	KBD_DELAY=32		;debounce time for keyboard (*2ms)
+.equ	KBD_DELAY=15		;debounce time for keyboard (*2ms)
 .equ	KBD_PORT_0=PORTD
 .equ	KBD_PIN_0=PIND
 .equ	KBD_DDR_0=DDRD
@@ -99,6 +109,8 @@
 .def		WH=r25
 
 ; bity w rejestrze 'status'
+.equ		ADC_RUN=0
+.equ		ADC_READY=1
 ; status
 
 
@@ -149,7 +161,7 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 		reti		;USART RX complete
 		reti		;USART data register empty (UDRE)
 		reti		;USART TX complete
-		reti		;ADC conversion complete
+		rjmp	adcc	;ADC conversion complete
 		reti		;EEPROM ready
 		reti		;Analog comparator
 		reti		;Two wire serial interface
@@ -210,14 +222,23 @@ clear_ram:
 		ldi	temp,(1<<OCIE2A)	;przerwanie przy przepelnieniu licznika
 		sts	TIMSK2,temp
 
-
+		;ADC
+		ldi	temp,0b00111111	;disable digital circuit on adc inputs
+		sts	DIDR0,temp
+		ldi	temp,(1<<REFS0)	;AVCC as reference voltage for ADC
+		sts	ADMUX,temp
+		ldi	temp,(1<<ADEN)+(1<<ADIE)+(1<<ADPS2)+(1<<ADPS1)	;enable adc, enable interrupts, prescaler /64
+		sts	ADCSRA,temp
+		sts	adc_channel,zero
+		
+		
 		sei	;enable interrupts
 
 		;initialize lcd
 		sbi	DDRB,PB2	;SS - must be output
-		sbi	DDRB,PB5	;SCK: output
-		sbi	DDRB,PB3	;MOSI: output
-		sbi	LCD_DDR_LED,LCD_LED	;backlight: output
+		;sbi	DDRB,PB5	;SCK: output
+		;sbi	DDRB,PB3	;MOSI: output
+		;sbi	LCD_DDR_LED,LCD_LED	;backlight: output
 		
 		waitms	250
 		rcall	lcd_init
@@ -244,8 +265,12 @@ clear_ram:
 
 
 main_loop:
+		sbrs	status,ADC_RUN
+		rcall	adc_start
 .ifdef DEBUG
 		rcall	kbd_debug
+		waitms	5
+		rcall	adc_debug
 		waitms	5
 .endif
 
@@ -298,7 +323,35 @@ kbd_debug:
 		ldi	XL,low(key_0)
 		ldi	XH,high(key_0)
 		ldi	temp2,6
-kbd_debug_1:
+		rcall	mem_debug
+
+		;chars binary
+		lds	temp,keys
+		swap	temp
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		lds	temp,keys
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		
+		ret
+;
+
+;
+;
+adc_debug:
+		m_lcd_text_pos	0,7
+		ldi	XL,low(adc_buffer)
+		ldi	XH,high(adc_buffer)
+		ldi	temp2,16
+		rcall	mem_debug
+		ret
+;
+; X - memory address
+; temp2 - number of bytes
+mem_debug:
 		push	temp2
 		
 		ld	temp,X
@@ -313,27 +366,62 @@ kbd_debug_1:
 		
 		pop	temp2
 		dec	temp2
-		brne	kbd_debug_1
-		
-		;chars binary
-		lds	temp,keys
-		swap	temp
-		rcall	tohex
-		sts	lcd_arg1,temp
-		rcall	lcd_char
-		lds	temp,keys
-		rcall	tohex
-		sts	lcd_arg1,temp
-		rcall	lcd_char
-		
+		brne	mem_debug
 		ret
+;
 .endif
 ;	
 
 
 ;
-; ####### math #########
+; trigger first conversion
+adc_start:
+		andi	status,~(1<<ADC_READY)	;set status flags
+		ori	status,(1<<ADC_RUN)
+		
+		sts	adc_channel,zero
+
+		ldi	temp,(1<<REFS0)		;reference source AVCC, channel=0
+		sts	ADMUX,temp
+		
+		lds	temp,ADCSRA		;start new conversion
+		ori	temp,(1<<ADSC)
+		sts	ADCSRA,temp
+		
+		ret
 ;
+
+
+;
+; copy adc results to channel space
+adc_copy_result:
+		ldi	ZL,low(adc_buffer)	;copy buffer to channels space
+		ldi	ZH,high(adc_buffer)
+		ldi	XL,low(channels)
+		ldi	XH,high(channels)
+		ldi	temp2,16
+adc_c_r_1:
+		ld	temp,Z+
+		st	X+,temp
+		dec	temp2
+		brne	adc_c_r_1
+		ret
+;
+
+;
+; ####### math #########
+.dseg
+math_buf:	.byte	8
+.cseg
+
+.equ	math_arg1=math_buf
+.equ	math_arg2=math_buf+2
+.equ	math_arg3=math_buf+4
+.equ	math_arg4=math_buf+6
+
+;
+; mul without sign
+math_mul_simple:
 ;
 ; #
 ; ########## END PODPROGRAMY ##########
@@ -371,9 +459,9 @@ kbd_scan:
 		push	XH					;2
 		ldi	XL,low(key_0)				;1
 		ldi	XH,high(key_0)				;1
-		cbi	KBD_PORT_0,KBD_0			
-		cbi	KBD_PORT_1,KBD_1			
-		cbi	KBD_PORT_2,KBD_2			
+		cbi	KBD_PORT_0,KBD_0
+		cbi	KBD_PORT_1,KBD_1
+		cbi	KBD_PORT_2,KBD_2
 		
 		lds	itemp2,keys	;load key status
 		
@@ -531,11 +619,143 @@ key_4:		.byte	1	;enter
 key_5:		.byte	1	;right
 .cseg
 
+;
+; ADC conversion complete
+adcc:
+		in	itemp,SREG
+		push	itemp
+		
+		;get last value
+		lds	itemp3,ADCL
+		lds	itemp4,ADCH
+		
+		;trigger next conversion if necessary
+		lds	itemp,adc_channel	;check last channel number
+		cpi	itemp,7			;if not last, trigger new conversion
+		breq	adcc_1
+		
+		inc	itemp			;change mux to next channel
+		ori	itemp,(1<<REFS0)	;add reference info
+		sts	ADMUX,itemp
+		
+		lds	itemp,ADCSRA		;start new conversion
+		ori	itemp,(1<<ADSC)
+		sts	ADCSRA,itemp
+adcc_1:
+		;calculate channel value
+		push	ZL
+		push	ZH
+		push	r0
+		push	r1
+		push	r3
+		push	XL
+		push	XH
+
+		ldi	ZL,low(ch_trims<<1)	;calculate data start for current channel
+		ldi	ZH,high(ch_trims<<1)
+		lds	itemp,adc_channel
+adcc_2:
+		tst	itemp
+		breq	adcc_4
+adcc_3:
+		adiw	ZL,TRIM_BYTES			;10 bytes per channel
+		dec	itemp
+		brne	adcc_3
+adcc_4:
+		lpm	itemp,Z+		;compare with center value
+		lpm	itemp2,Z+
+		cp	itemp,itemp3
+		cpc	itemp2,itemp4
+		brcc	adcc_5
+		adiw	ZL,4			;skip values for lower half
+adcc_5:
+		lpm	itemp,Z+		;multiply by a
+		lpm	itemp2,Z+
+		clr	XH
+		clr	XL
+		mul	itemp,itemp3
+		mov	r3,r1
+		mul	itemp,itemp4
+		add	r3,r0
+		adc	XL,r1
+		mul	itemp2,itemp3
+		add	r3,r0
+		adc	XL,r1
+		adc	XH,zero
+		mul	itemp2,itemp4
+		add	XL,r0
+		adc	XH,r1
+		lsr	XH			;get right result (>>2)
+		ror	XL
+		ror	r3
+		lsr	XH
+		ror	XL
+		ror	r3
+		
+		lpm	itemp,Z+		;and add b
+		lpm	itemp2,Z+
+		add	itemp,r3
+		adc	itemp2,XL
+		
+		;store value to buffer
+		ldi	ZL,low(adc_buffer-2)	;calculate address
+		ldi	ZH,high(adc_buffer-2)
+		lds	itemp3,adc_channel
+		inc	itemp3
+adcc_6:
+		adiw	ZL,2
+		dec	itemp3
+		brne	adcc_6
+		
+		st	Z+,itemp		;store
+		st	Z+,itemp2
+		
+		;next channel
+		lds	itemp,adc_channel	;calculate next channel
+		inc	itemp
+		sts	adc_channel,itemp
+		
+		;end?
+		cpi	itemp,8
+		brne	adcc_e
+		
+		;end set ready flag, etc
+		andi	status,~(1<<ADC_RUN)
+		ori	status,(1<<ADC_READY)
+		
+adcc_e:
+		pop	XH
+		pop	XL
+		pop	r3
+		pop	r1
+		pop	r0
+		pop	ZH
+		pop	ZL
+		
+		pop	itemp
+		out	SREG,itemp
+		reti
+;
+
+
 ; #
 ; ############ END PRZERWANIA ############
 ;
 
 
+; ############ D A N E ##############
+; #
+ch_trims:	.dw	0x01FF		;center position for channel 0
+		.dw	0x0800		;a=2
+		.dw	0xFC00		;b=-1
+		.dw	0x0800,0xFC00	;a,b for second half
+		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 1
+		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 2
+		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 3
+		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 4
+		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 5
+		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 6
+		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 7
 
 
 
@@ -545,13 +765,17 @@ key_5:		.byte	1	;right
 
 ; ############ ZMIENNE ####################
 .dseg
-channels:	.byte	512	;max 256 channels
-ch_status:	.byte	30
-blocks:		.byte	256	;max 127 blocks
-wr_tmp:		.byte	128
-math_buf:	.byte	16
+adc_channel:	.byte	1	;current channel being processed
+adc_buffer:	.byte	8*2	;buffer for processed adc values (values must be copied at once)
+out_buffer:	.byte	8*2	;buffer for generating pwm
+channels:	.byte	CHANNELS_MAX*2	;memory for channel processing
+blocks:		.byte	BLOCKS_MAX*2	;pointers to blocks
+wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
 ;
 ; ############ EEPROM #####################
 ; #
 .eseg
 .org	0
+eesig:		.db	0x55,0xaa	;signature
+		.db	VERSION		;eeprom variables version
+last_model:	.db	1
