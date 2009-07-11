@@ -13,6 +13,7 @@
 ;		- added some ram reservations for channels and blocks
 ; 2009.07.10	- ADC init, start
 ;		- get values from adc, calculate with calibration data and store to channels space
+;		- add digital filter for adc (no, x2, x4 - depends of status register, default x2)
 
 
 .nolist
@@ -53,6 +54,12 @@
 .equ	KEY_RIGHT=3
 .equ	KEY_ENTER=4
 .equ	KEY_ESC=5
+; bits in status register
+.equ	ADC_RUN=0
+.equ	ADC_READY=1
+.equ	ADC_FILTER=2
+.equ	ADC_FILTER4=3
+; status
 
 ; ***** REJESTRY *****
 ; r0	roboczy
@@ -108,10 +115,6 @@
 .def		WL=r24
 .def		WH=r25
 
-; bity w rejestrze 'status'
-.equ		ADC_RUN=0
-.equ		ADC_READY=1
-; status
 
 
 
@@ -183,7 +186,7 @@ reset:
 		
 		;initialize variables
 		clr	zero
-		clr	status		;clear status register
+		ldi	status,(1<<ADC_FILTER)		;set default values for status register
 		
 		;clear ram
 		ldi	XL,low(SRAM_START)
@@ -707,9 +710,31 @@ adcc_6:
 		dec	itemp3
 		brne	adcc_6
 		
-		st	Z+,itemp		;store
+		;digital filter
+		sbrs	status,ADC_FILTER
+		rjmp	adcc_8
+		ld	itemp3,Z+		;filter x2
+		ld	itemp4,Z+
+		add	itemp,itemp3
+		adc	itemp2,itemp4
+		sbrs	status,ADC_FILTER4	;filter x4?
+		rjmp	adcc_7
+		add	itemp,itemp3
+		adc	itemp2,itemp4
+		add	itemp,itemp3
+		adc	itemp2,itemp4
+		asr	itemp2
+		ror	itemp
+adcc_7:
+		asr	itemp2
+		ror	itemp
+		st	-Z,itemp2
+		st	-Z,itemp
+		rjmp	adcc_9
+adcc_8:
+		st	Z+,itemp		;no filter
 		st	Z+,itemp2
-		
+adcc_9:
 		;next channel
 		lds	itemp,adc_channel	;calculate next channel
 		inc	itemp
