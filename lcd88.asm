@@ -14,7 +14,22 @@
 ; 2009.07.10	- ADC init, start
 ;		- get values from adc, calculate with calibration data and store to channels space
 ;		- add digital filter for adc (no, x2, x4 - depends of status register, default x2)
+; 2009.07.12	- small rewrite of adc interrupt (it triggers now ppm), adc is triggered every 20ms
+;			from timer2 interrupt
 
+
+
+; PPM: _________   ______   _________   _____   ______
+;               |_|      |_|         |_|     |_|
+;
+;     - start --->|<-1 ch->|<- 2 ch  ->|    >|-|<-0.3ms
+;
+; timer clock: 11059200
+; sync pulse:	0.3ms ~= 3318 clk
+; minimum:	   1ms = 11059 clk
+; center:	 1.5ms = 16589 clk
+; max:		   2ms = 22118 clk
+; counter max=(value+1024)*5.3999+11059=(value+3072)*5.3999
 
 .nolist
 .include "m88def.inc"		;standard header for atmega88
@@ -29,7 +44,9 @@
 .equ	CHANNELS_MAX=256
 .equ	BLOCKS_MAX=128		;253 is absolute max
 .equ	VERSION=1		;must be changed if eeprom format will change
-.equ	TRIM_BYTES=10
+.equ	TRIM_BYTES=10		;how much bytes are used to trim each a/c channel to produce -1..1 result
+.equ	PPM_SYNC=ZEGAR*3/10000	;0.3ms
+.equ	PPM_FRAME=ZEGAR*20/1000	;20ms
 ;numbers
 .equ	L_ZERO=0
 .equ	L_JEDEN=0b0000010000000000	;1 in 6.10
@@ -158,7 +175,7 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 		reti		;Timer2 Overflow
 		reti		;Timer1 Capture
 		reti		;Timer1 CompareA
-		reti		;Timer1 CompareB
+		rjmp	t1cm	;Timer1 CompareB
 		reti		;Timer1 Overflow
 		reti		;Timer0 Compare MAtch A
 		reti		;Timer0 Compare Match B
@@ -216,6 +233,23 @@ clear_ram:
 		sbi	DDRD,PD5
 		
 		;Timer1 - pwm for PPM
+		ldi	temp,high(PPM_SYNC)
+		sts	OCR1AH,temp
+		ldi	temp,low(PPM_SYNC)
+		sts	OCR1AL,temp
+		ldi	temp,high(PPM_SYNC*2)
+		sts	OCR1BH,temp
+		ldi	temp,low(PPM_SYNC*2)
+		sts	OCR1BL,temp
+		ldi	temp,(1<<COM1B1)+(1<<COM1B1)+(1<<WGM11)+(1<<WGM10)	;non inverting ppm, fast pwm with ctc on OCR1A
+		sts	TCCR1A,temp
+		ldi	temp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)
+		sts	TCCR1B,temp
+		ldi	temp,(1<<OCIE1B)	;enable interrupts from OC1B
+		sts	TIMSK1,temp
+		ldi	temp,8			;write 8'th channel, so it should stop at first interrupt
+		sts	ppm_channel,temp
+		
 		
 		;Timer2 - odliczanie czasu, ~1kHz, ctc, przerwania
 		ldi	temp,(1<<WGM21)	;ctc
@@ -237,8 +271,8 @@ clear_ram:
 		sts	ADCSRA,temp
 		sts	adc_channel,zero
 		
-		
-		sei	;enable interrupts
+		;enable interrupts
+		sei
 
 		;initialize lcd
 		sbi	DDRB,PB2	;SS - must be output
@@ -269,15 +303,15 @@ clear_ram:
 		m_lcd_set_fg	COLOR_BLACK
 
 
-
+		ori	status,(1<<ADC_ON)	;enable adc
 main_loop:
-		sbrs	status,ADC_RUN
-		rcall	adc_start
+
 .ifdef DEBUG
 		rcall	kbd_debug
 		waitms	5
 		rcall	adc_debug
 		waitms	5
+		rcall	status_debug
 .endif
 
 
@@ -355,6 +389,24 @@ adc_debug:
 		rcall	mem_debug
 		ret
 ;
+
+;
+;
+status_debug:
+		m_lcd_text_pos	0,10
+		mov	temp,status
+		swap	temp
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		mov	temp,status
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		ret
+;
+
+
 ; X - memory address
 ; temp2 - number of bytes
 mem_debug:
@@ -379,40 +431,6 @@ mem_debug:
 ;	
 
 
-;
-; trigger first conversion
-adc_start:
-		andi	status,~(1<<ADC_READY)	;set status flags
-		ori	status,(1<<ADC_RUN)
-		
-		sts	adc_channel,zero
-
-		ldi	temp,(1<<REFS0)		;reference source AVCC, channel=0
-		sts	ADMUX,temp
-		
-		lds	temp,ADCSRA		;start new conversion
-		ori	temp,(1<<ADSC)
-		sts	ADCSRA,temp
-		
-		ret
-;
-
-
-;
-; copy adc results to channel space
-adc_copy_result:
-		ldi	ZL,low(adc_buffer)	;copy buffer to channels space
-		ldi	ZH,high(adc_buffer)
-		ldi	XL,low(channels)
-		ldi	XH,high(channels)
-		ldi	temp2,16
-adc_c_r_1:
-		ld	temp,Z+
-		st	X+,temp
-		dec	temp2
-		brne	adc_c_r_1
-		ret
-;
 
 ;
 ; ####### math #########
@@ -446,12 +464,42 @@ t2cm:
 		brne	t2cm_1
 		inc	mscounth
 t2cm_1:		
-		;TODO: trigger PPM, trigger ADC
+		lds	itemp,count20ms		;check for 20ms
+		inc	itemp
+		sts	count20ms,itemp
+		cpi	itemp,20
+		brcs	t2cm_3
+		;we are here every 20ms
+		clr	itemp			;set counter to 0
+		sts	count20ms,itemp
 		
+		sbrs	status,ADC_ON		;check if ADC should be on
+		rjmp	t2cm_2
+		
+		;start adc conversion
+		andi	status,~(1<<ADC_READY)	;set status flags
+		ori	status,(1<<ADC_RUN)
+		
+		sts	adc_channel,zero
+
+		ldi	itemp,(1<<REFS0)	;reference source AVCC, channel=0
+		sts	ADMUX,itemp
+		
+		lds	itemp,ADCSRA		;start new conversion
+		ori	itemp,(1<<ADSC)
+		sts	ADCSRA,itemp
+		rjmp	t2cm_3
+t2cm_2:
+		;if adc is off, ppm must be triggered here
+		sbrs	status,PPM_ON
+		rjmp	t2cm_3
+		;TODO: trigger pwn
+		;.....
+t2cm_3:
 		;keyboard
 		sbrc	mscountl,0	;call only on even milisoconds
 		rcall	kbd_scan
-		
+r2cm_e:
 		pop	itemp
 		out	SREG,itemp
 		reti
@@ -623,6 +671,7 @@ key_2:		.byte	1	;esc
 key_3:		.byte	1	;left
 key_4:		.byte	1	;enter
 key_5:		.byte	1	;right
+count20ms:	.byte	1	;counter for counting 20ms
 .cseg
 
 ;
@@ -747,10 +796,36 @@ adcc_9:
 		cpi	itemp,8
 		brne	adcc_e
 		
-		;end set ready flag, etc
-		andi	status,~(1<<ADC_RUN)
-		ori	status,(1<<ADC_READY)
+		;last channel processed, set ready flag, etc
+		ldi	ZL,low(adc_buffer)	;copy adc buffer to channels space
+		ldi	ZH,high(adc_buffer)
+		ldi	XL,low(channels)
+		ldi	XH,high(channels)
+		ldi	itemp2,16
+adcc_10:
+		ld	itemp,Z+
+		st	X+,itemp
+		dec	itemp2
+		brne	adcc_10
+
+		ldi	XL,low(out_buffer)	;copy output channels to ppm buffer
+		ldi	XH,high(out_buffer)
+		ldi	ZL,low(channels+32)	;output channles are 16-23
+		ldi	ZH,high(channels+32)
+		ldi	itemp2,16
+adcc_11:
+		ld	itemp,Z+
+		st	X+,itemp
+		dec	itemp2
+		brne	adcc_11
 		
+		andi	status,~(1<<ADC_RUN)	;ready
+		ori	status,(1<<ADC_READY)
+
+		sbrs	status,PPM_ON		;trigger ppm if enabled
+		rjmp	adcc_e
+		;TODO: PPM code here
+		;...
 adcc_e:
 		pop	XH
 		pop	XL
@@ -763,6 +838,21 @@ adcc_e:
 		pop	itemp
 		out	SREG,itemp
 		reti
+;
+
+
+;
+; timer 1 compare B match (middle of pwm)
+t1cm:
+		in	itemp,SREG
+		push	itemp
+		
+		pop	itemp
+		out	SREG,itemp
+		reti
+.dseg
+ppm_channel:	.byte	1
+.cseg
 ;
 
 
@@ -795,7 +885,7 @@ ch_trims:	.dw	0x01FF		;center position for channel 0
 .dseg
 adc_channel:	.byte	1	;current channel being processed
 adc_buffer:	.byte	8*2	;buffer for processed adc values (values must be copied at once)
-out_buffer:	.byte	8*2	;buffer for generating pwm
+out_buffer:	.byte	8*2	;buffer for generating ppm
 channels:	.byte	CHANNELS_MAX*2	;memory for channel processing
 blocks:		.byte	BLOCKS_MAX*2	;pointers to blocks
 wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
