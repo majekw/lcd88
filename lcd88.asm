@@ -59,6 +59,9 @@
 .equ	ADC_READY=1
 .equ	ADC_FILTER=2
 .equ	ADC_FILTER4=3
+.equ	ADC_ON=4
+.equ	PPM_ON=5
+.equ	PPM_POL=6
 ; status
 
 ; ***** REJESTRY *****
