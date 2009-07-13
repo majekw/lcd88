@@ -16,20 +16,9 @@
 ;		- add digital filter for adc (no, x2, x4 - depends of status register, default x2)
 ; 2009.07.12	- small rewrite of adc interrupt (it triggers now ppm), adc is triggered every 20ms
 ;			from timer2 interrupt
+;		- start ppm code
 
 
-
-; PPM: _________   ______   _________   _____   ______
-;               |_|      |_|         |_|     |_|
-;
-;     - start --->|<-1 ch->|<- 2 ch  ->|    >|-|<-0.3ms
-;
-; timer clock: 11059200
-; sync pulse:	0.3ms ~= 3318 clk
-; minimum:	   1ms = 11059 clk
-; center:	 1.5ms = 16589 clk
-; max:		   2ms = 22118 clk
-; counter max=(value+1024)*5.3999+11059=(value+3072)*5.3999
 
 .nolist
 .include "m88def.inc"		;standard header for atmega88
@@ -233,13 +222,13 @@ clear_ram:
 		sbi	DDRD,PD5
 		
 		;Timer1 - pwm for PPM
-		ldi	temp,high(PPM_SYNC)
-		sts	OCR1AH,temp
-		ldi	temp,low(PPM_SYNC)
-		sts	OCR1AL,temp
 		ldi	temp,high(PPM_SYNC*2)
-		sts	OCR1BH,temp
+		sts	OCR1AH,temp
 		ldi	temp,low(PPM_SYNC*2)
+		sts	OCR1AL,temp
+		ldi	temp,high(PPM_SYNC)
+		sts	OCR1BH,temp
+		ldi	temp,low(PPM_SYNC)
 		sts	OCR1BL,temp
 		ldi	temp,(1<<COM1B1)+(1<<COM1B1)+(1<<WGM11)+(1<<WGM10)	;non inverting ppm, fast pwm with ctc on OCR1A
 		sts	TCCR1A,temp
@@ -249,7 +238,7 @@ clear_ram:
 		sts	TIMSK1,temp
 		ldi	temp,8			;write 8'th channel, so it should stop at first interrupt
 		sts	ppm_channel,temp
-		
+		sbi	DDRB,PB2		;output
 		
 		;Timer2 - odliczanie czasu, ~1kHz, ctc, przerwania
 		ldi	temp,(1<<WGM21)	;ctc
@@ -303,8 +292,13 @@ clear_ram:
 		m_lcd_set_fg	COLOR_BLACK
 
 
-		ori	status,(1<<ADC_ON)	;enable adc
+		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm
 main_loop:
+		;copy input to output
+		lds	temp,channels
+		sts	channels+32,temp
+		lds	temp,channels+1
+		sts	channels+33,temp
 
 .ifdef DEBUG
 		rcall	kbd_debug
@@ -312,6 +306,8 @@ main_loop:
 		rcall	adc_debug
 		waitms	5
 		rcall	status_debug
+		waitms	5
+		rcall	ppm_debug
 .endif
 
 
@@ -386,6 +382,17 @@ adc_debug:
 		ldi	XL,low(adc_buffer)
 		ldi	XH,high(adc_buffer)
 		ldi	temp2,16
+		rcall	mem_debug
+		ret
+;
+
+;
+;
+ppm_debug:
+		m_lcd_text_pos	0,11
+		ldi	XL,low(ppm_debug_val)
+		ldi	XH,high(ppm_debug_val)
+		ldi	temp2,2
 		rcall	mem_debug
 		ret
 ;
@@ -493,8 +500,9 @@ t2cm_2:
 		;if adc is off, ppm must be triggered here
 		sbrs	status,PPM_ON
 		rjmp	t2cm_3
-		;TODO: trigger pwn
-		;.....
+		;trigger pwn - TODO: copy buffer here?
+		sts	ppm_channel,zero
+		rcall	ppm_calc
 t2cm_3:
 		;keyboard
 		sbrc	mscountl,0	;call only on even milisoconds
@@ -824,8 +832,9 @@ adcc_11:
 
 		sbrs	status,PPM_ON		;trigger ppm if enabled
 		rjmp	adcc_e
-		;TODO: PPM code here
-		;...
+		;PPM first pulse
+		sts	ppm_channel,zero
+		rcall	ppm_calc
 adcc_e:
 		pop	XH
 		pop	XL
@@ -838,6 +847,10 @@ adcc_e:
 		pop	itemp
 		out	SREG,itemp
 		reti
+.dseg
+adc_channel:	.byte	1	;current channel being processed
+adc_buffer:	.byte	8*2	;buffer for processed adc values (values must be copied at once)
+.cseg
 ;
 
 
@@ -847,13 +860,113 @@ t1cm:
 		in	itemp,SREG
 		push	itemp
 		
+		lds	itemp,ppm_channel
+		cpi	itemp,8		;end?
+		brne	t1cm_1
+		;last channel, stop counter
+		ldi	itemp,(1<<WGM13)+(1<<WGM12)
+		sts	TCCR1B,itemp
+		rjmp	t1cm_e
+t1cm_1:
+		;process new value
+		rcall	ppm_calc
+		lds	itemp,ppm_channel
+		inc	itemp
+		sts	ppm_channel,itemp
+t1cm_e:
 		pop	itemp
 		out	SREG,itemp
 		reti
 .dseg
 ppm_channel:	.byte	1
+out_buffer:	.byte	8*2	;buffer for generating ppm
 .cseg
+
+
+; PPM: _________   ______   _________   _____   ______
+;               |_|      |_|         |_|     |_|
 ;
+;     - start --->|<-1 ch->|<- 2 ch  ->|    >|-|<-0.3ms
+;
+; timer clock: 11059200
+; sync pulse:	0.3ms ~= 3318 clk
+; minimum:	   1ms = 11059 clk
+; center:	 1.5ms = 16589 clk
+; max:		   2ms = 22118 clk
+; counter max=(value+1024)*5.3999+11059=(value+3072)*5.3999
+
+;
+; calculate next counter value
+ppm_calc:
+		push	r0
+		push	r1
+		push	XL
+		push	XH
+		
+		;get value
+		lds	itemp,ppm_channel	;get buffer address
+		lsl	itemp
+		ldi	XL,low(out_buffer)
+		ldi	XH,high(out_buffer)
+		add	XL,itemp
+		adc	XH,zero
+		
+		ld	itemp3,X+		;get value
+		ld	itemp4,X+
+		
+		;recalculate
+		ldi	itemp,high(3072)	;make 2..4 from -1..1
+		add	itemp4,itemp
+		
+		ldi	itemp,low(5529)		;5.3994
+		ldi	itemp2,high(5529)
+		
+		
+		mul	itemp3,itemp		;multiply shifted value by 5.3994
+		mov	XL,r1			;forget about r0, its out of precision
+		
+		clr	XH
+		mul	itemp3,itemp2
+		clr	itemp3			;we can reuse itemp3, as all operations with it's value are done
+		add	XL,r0
+		adc	XH,r1
+		adc	itemp3,zero
+		
+		mul	itemp4,itemp
+		add	XL,r0
+		adc	XH,r1
+		adc	itemp3,zero
+		
+		mul	itemp4,itemp2
+		add	XH,r0
+		adc	itemp3,r1
+		
+		lsr	itemp3			;shift 2 bit right to skip fraction part (8 bits skipped at beginning of multiplication)
+		ror	XH
+		ror	XL
+		lsr	itemp3
+		ror	XH
+		ror	XL
+
+		;program timer
+		sts	OCR1AH,XH		;set new maximum time for next cycle
+		sts	OCR1AL,XL
+		
+		sts	ppm_debug_val,XH
+		sts	ppm_debug_val,XL
+		
+		ldi	itemp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)	;start clock again
+		sts	TCCR1B,itemp
+		
+		pop	XH
+		pop	XL
+		pop	r1
+		pop	r0
+		ret
+;
+.dseg
+ppm_debug_val:	.byte	2
+.cseg
 
 
 ; #
@@ -883,9 +996,6 @@ ch_trims:	.dw	0x01FF		;center position for channel 0
 
 ; ############ ZMIENNE ####################
 .dseg
-adc_channel:	.byte	1	;current channel being processed
-adc_buffer:	.byte	8*2	;buffer for processed adc values (values must be copied at once)
-out_buffer:	.byte	8*2	;buffer for generating ppm
 channels:	.byte	CHANNELS_MAX*2	;memory for channel processing
 blocks:		.byte	BLOCKS_MAX*2	;pointers to blocks
 wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
