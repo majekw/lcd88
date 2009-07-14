@@ -17,6 +17,7 @@
 ; 2009.07.12	- small rewrite of adc interrupt (it triggers now ppm), adc is triggered every 20ms
 ;			from timer2 interrupt
 ;		- start ppm code
+; 2009.07.14	- finish ppm code, it works! :-)
 
 
 
@@ -36,6 +37,7 @@
 .equ	TRIM_BYTES=10		;how much bytes are used to trim each a/c channel to produce -1..1 result
 .equ	PPM_SYNC=ZEGAR*3/10000	;0.3ms
 .equ	PPM_FRAME=ZEGAR*20/1000	;20ms
+.equ	PPM_CHANNELS=8		;number of output channels
 ;numbers
 .equ	L_ZERO=0
 .equ	L_JEDEN=0b0000010000000000	;1 in 6.10
@@ -230,7 +232,7 @@ clear_ram:
 		sts	OCR1BH,temp
 		ldi	temp,low(PPM_SYNC)
 		sts	OCR1BL,temp
-		ldi	temp,(1<<COM1B1)+(1<<COM1B1)+(1<<WGM11)+(1<<WGM10)	;non inverting ppm, fast pwm with ctc on OCR1A
+		ldi	temp,(1<<COM1B1)+(1<<COM1B0)+(1<<WGM11)+(1<<WGM10)	;non inverting ppm, fast pwm with ctc on OCR1A
 		sts	TCCR1A,temp
 		ldi	temp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)
 		sts	TCCR1B,temp
@@ -295,10 +297,16 @@ clear_ram:
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm
 main_loop:
 		;copy input to output
-		lds	temp,channels
-		sts	channels+32,temp
-		lds	temp,channels+1
-		sts	channels+33,temp
+		ldi	XL,low(channels)
+		ldi	XH,high(channels)
+		ldi	ZL,low(channels+32)
+		ldi	ZH,high(channels+32)
+		ldi	temp2,16
+l1:
+		ld	temp,X+
+		st	Z+,temp
+		dec	temp2
+		brne	l1
 
 .ifdef DEBUG
 		rcall	kbd_debug
@@ -477,8 +485,7 @@ t2cm_1:
 		cpi	itemp,20
 		brcs	t2cm_3
 		;we are here every 20ms
-		clr	itemp			;set counter to 0
-		sts	count20ms,itemp
+		sts	count20ms,zero		;set counter to 0
 		
 		sbrs	status,ADC_ON		;check if ADC should be on
 		rjmp	t2cm_2
@@ -503,6 +510,9 @@ t2cm_2:
 		;trigger pwn - TODO: copy buffer here?
 		sts	ppm_channel,zero
 		rcall	ppm_calc
+		ldi	itemp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)	;start clock again
+		sts	TCCR1B,itemp
+
 t2cm_3:
 		;keyboard
 		sbrc	mscountl,0	;call only on even milisoconds
@@ -818,7 +828,7 @@ adcc_10:
 
 		ldi	XL,low(out_buffer)	;copy output channels to ppm buffer
 		ldi	XH,high(out_buffer)
-		ldi	ZL,low(channels+32)	;output channles are 16-23
+		ldi	ZL,low(channels+32)	;output channels are 16-23
 		ldi	ZH,high(channels+32)
 		ldi	itemp2,16
 adcc_11:
@@ -835,6 +845,8 @@ adcc_11:
 		;PPM first pulse
 		sts	ppm_channel,zero
 		rcall	ppm_calc
+		ldi	itemp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)	;start clock again
+		sts	TCCR1B,itemp
 adcc_e:
 		pop	XH
 		pop	XL
@@ -861,7 +873,7 @@ t1cm:
 		push	itemp
 		
 		lds	itemp,ppm_channel
-		cpi	itemp,8		;end?
+		cpi	itemp,PPM_CHANNELS+1	;end?
 		brne	t1cm_1
 		;last channel, stop counter
 		ldi	itemp,(1<<WGM13)+(1<<WGM12)
@@ -870,9 +882,6 @@ t1cm:
 t1cm_1:
 		;process new value
 		rcall	ppm_calc
-		lds	itemp,ppm_channel
-		inc	itemp
-		sts	ppm_channel,itemp
 t1cm_e:
 		pop	itemp
 		out	SREG,itemp
@@ -903,8 +912,12 @@ ppm_calc:
 		push	XL
 		push	XH
 		
-		;get value
+		;get channel number to process
 		lds	itemp,ppm_channel	;get buffer address
+		cpi	itemp,PPM_CHANNELS	;last fake/synchro channel?
+		breq	ppm_calc_2
+		
+		;get value
 		lsl	itemp
 		ldi	XL,low(out_buffer)
 		ldi	XH,high(out_buffer)
@@ -923,7 +936,7 @@ ppm_calc:
 		
 		
 		mul	itemp3,itemp		;multiply shifted value by 5.3994
-		mov	XL,r1			;forget about r0, its out of precision
+		mov	XL,r1			;forget about r0, it's out of precision
 		
 		clr	XH
 		mul	itemp3,itemp2
@@ -949,20 +962,27 @@ ppm_calc:
 		ror	XL
 
 		;program timer
+ppm_calc_1:
 		sts	OCR1AH,XH		;set new maximum time for next cycle
 		sts	OCR1AL,XL
-		
+.ifdef DEBUG
 		sts	ppm_debug_val,XH
-		sts	ppm_debug_val,XL
-		
-		ldi	itemp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)	;start clock again
-		sts	TCCR1B,itemp
+		sts	ppm_debug_val+1,XL
+.endif	
+		lds	itemp,ppm_channel
+		inc	itemp
+		sts	ppm_channel,itemp
 		
 		pop	XH
 		pop	XL
 		pop	r1
 		pop	r0
 		ret
+ppm_calc_2:
+		;synchro pulse 
+		ldi	XH,high(PPM_SYNC*2)	;short to make wake up also short
+		ldi	XL,low(PPM_SYNC*2)
+		rjmp	ppm_calc_1
 ;
 .dseg
 ppm_debug_val:	.byte	2
