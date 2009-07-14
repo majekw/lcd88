@@ -9,7 +9,8 @@ boot_start:
 ; # write blocks to flash
 ; - Z : flash address
 ; - Y : ram address
-; - temp : number of bytes to write
+; - temp (r16) : number of bytes to write
+; destroyed: r0,r1,r17,r20,r24
 boot_block_write:
 
 

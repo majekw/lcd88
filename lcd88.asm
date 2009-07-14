@@ -17,8 +17,10 @@
 ; 2009.07.12	- small rewrite of adc interrupt (it triggers now ppm), adc is triggered every 20ms
 ;			from timer2 interrupt
 ;		- start ppm code
-; 2009.07.14	- finish ppm code, it works! :-)
-
+; 2009.07.13	- finish ppm code, it works! :-)
+; 2009.07.14	- added basic model data with rules for blocks, channels and descriptions
+;		- some cleanups
+;		- added limits for generated ppm pulses (0.8...2.2ms)
 
 
 .nolist
@@ -35,9 +37,12 @@
 .equ	BLOCKS_MAX=128		;253 is absolute max
 .equ	VERSION=1		;must be changed if eeprom format will change
 .equ	TRIM_BYTES=10		;how much bytes are used to trim each a/c channel to produce -1..1 result
+.equ	PPM_INTERVAL=20		;20ms for each frame
 .equ	PPM_SYNC=ZEGAR*3/10000	;0.3ms
-.equ	PPM_FRAME=ZEGAR*20/1000	;20ms
+.equ	PPM_FRAME=ZEGAR*PPM_INTERVAL/1000	;20ms
 .equ	PPM_CHANNELS=8		;number of output channels
+.equ	PPM_MIN=ZEGAR*8/10000	;0.8ms - absolute minimum
+.equ	PPM_MAX=ZEGAR*22/10000	;2.2ms - absolute maximum
 ;numbers
 .equ	L_ZERO=0
 .equ	L_JEDEN=0b0000010000000000	;1 in 6.10
@@ -70,6 +75,7 @@
 .equ	ADC_ON=4
 .equ	PPM_ON=5
 .equ	PPM_POL=6
+.equ	MODEL_CHANGED=7
 ; status
 
 ; ***** REJESTRY *****
@@ -324,7 +330,7 @@ banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
 
 
 
-; ######### PODPROGRAMY ###########
+; ######### SUBROUTINES ###########
 ; #
 
 
@@ -463,10 +469,10 @@ math_buf:	.byte	8
 math_mul_simple:
 ;
 ; #
-; ########## END PODPROGRAMY ##########
+; ########## END SUBROUTINES ##########
 
 ;
-; ############ PRZERWANIA ################
+; ############ INTERRUPTS ################
 ; #
 
 ;
@@ -482,7 +488,7 @@ t2cm_1:
 		lds	itemp,count20ms		;check for 20ms
 		inc	itemp
 		sts	count20ms,itemp
-		cpi	itemp,20
+		cpi	itemp,PPM_INTERVAL
 		brcs	t2cm_3
 		;we are here every 20ms
 		sts	count20ms,zero		;set counter to 0
@@ -507,7 +513,7 @@ t2cm_2:
 		;if adc is off, ppm must be triggered here
 		sbrs	status,PPM_ON
 		rjmp	t2cm_3
-		;trigger pwn - TODO: copy buffer here?
+		;trigger ppm - TODO: copy buffer here?
 		sts	ppm_channel,zero
 		rcall	ppm_calc
 		ldi	itemp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)	;start clock again
@@ -515,7 +521,7 @@ t2cm_2:
 
 t2cm_3:
 		;keyboard
-		sbrc	mscountl,0	;call only on even milisoconds
+		sbrc	mscountl,0	;call only on even miliseconds
 		rcall	kbd_scan
 r2cm_e:
 		pop	itemp
@@ -811,7 +817,7 @@ adcc_9:
 		sts	adc_channel,itemp
 		
 		;end?
-		cpi	itemp,8
+		cpi	itemp,PPM_CHANNELS
 		brne	adcc_e
 		
 		;last channel processed, set ready flag, etc
@@ -960,6 +966,22 @@ ppm_calc:
 		lsr	itemp3
 		ror	XH
 		ror	XL
+		
+		;check min and max limits for pulse
+		ldi	itemp,low(PPM_MIN)	;min
+		ldi	itemp2,high(PPM_MIN)
+		cp	XL,itemp
+		cpc	XH,itemp2
+		brcc	ppm_calc_0
+		movw	XL,itemp	;copy minimum
+		rjmp	ppm_calc_1
+ppm_calc_0:
+		ldi	itemp,low(PPM_MAX)	;max
+		ldi	itemp2,high(PPM_MAX)
+		cp	XL,itemp
+		cpc	XH,itemp2
+		brcs	ppm_calc_1
+		movw	XL,itemp
 
 		;program timer
 ppm_calc_1:
@@ -990,12 +1012,14 @@ ppm_debug_val:	.byte	2
 
 
 ; #
-; ############ END PRZERWANIA ############
+; ############ END INTERRUPTS ############
 ;
 
 
-; ############ D A N E ##############
+; ############ D A T A ##############
 ; #
+flash_data:
+		.db	0,84,0,0	;header
 ch_trims:	.dw	0x01FF		;center position for channel 0
 		.dw	0x0800		;a=2
 		.dw	0xFC00		;b=-1
@@ -1009,16 +1033,21 @@ ch_trims:	.dw	0x01FF		;center position for channel 0
 		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 7
 
 
+.include "models.asm"
+flash_pos:
+		.dw	0
 
 ;.include "version.inc"		;include svn version as firmware version
 .include "bootloader.inc"	;needed for flash reprogramming
 
 
-; ############ ZMIENNE ####################
+; ############ VARIABLES ####################
 .dseg
-channels:	.byte	CHANNELS_MAX*2	;memory for channel processing
+channels:	.byte	CHANNELS_MAX*2	;memory for channel values
 blocks:		.byte	BLOCKS_MAX*2	;pointers to blocks
-wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
+sequence:	.byte	2		;pointer to processing sequence block
+cur_model:		.byte	1		;current model
+;wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
 ;
 ; ############ EEPROM #####################
 ; #
@@ -1027,3 +1056,9 @@ wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
 eesig:		.db	0x55,0xaa	;signature
 		.db	VERSION		;eeprom variables version
 last_model:	.db	1
+data_start:	.db	low(flash_data<<1)
+		.db	high(flash_data<<1)
+data_end:	.db	low(boot_start<<1)
+		.db	high(boot_start<<1)
+data_pos:	.db	low(flash_pos<<1)
+		.db	high(flash_pos<<1)
