@@ -24,14 +24,16 @@
 ; types of blocks:		inputs	outputs	input types	remark
 ; 1 - trim			2	1	(in+trim)	=adder but special treatment of trim input
 ; 2 - reverse			2	1	(in+reverse)	=multiplier but a.a.
-; 2 - adder			2	1	(2x in)
 ; 3 - limit			3	1	(in+min+max)
-; 4 - multiplier		2	1	(2x in)
+; 4 - multiplier		2	1	(2x in)		X=A*B
 ; 5 - digital input		1	1	(in)		kind of shootky gate: returns only -1,0,1
 ; 6 - multiplexer		4	1	(3x in+control)
 ; 7 - limit detector		1	1	(in)		returns number to multiply by to stay in -1...1 range (if exceeded, else 1)
-; 8 - min			2	1	(2x in)		returns lower value
-; 9 - max			2	1	(2x in)		returns higher value
+; 8 - min			2	1	(2x in)		X=min(A,B)
+; 9 - max			2	1	(2x in)		X=max(A,B)
+; 10 - delta			2	2	(2x in)		X=(A+B)/2, Y=(A-B)/2
+; 11 - sub			2	1	(2x in)		X=A-B
+; 12 - adder			2	1	(2x in)		X=A+B
 
 ; specific blocks:
 ; 0 - block
@@ -137,19 +139,34 @@
 		.db	model+(3<<6),20,27,"reverse for ch3",0,0
 		.db	model+(3<<6),20,28,"reverse for ch4",0,0
 
-; simple 2 channel delta - NOT FINISHED!
+; simple 2 channel delta - minimalistic scenario (without delta special block)
+; ch0 --trim--ch34--reverse--ch35--mul--ch36---add---out0
+;       ch27         ch29          ch31      \   \---------\
+;                                             \            |
+; ch1 --trim--ch37--reverse--ch38--mul--ch39--add---out1   |
+;       ch28         ch30          ch32   \                |
+;                                          -mul--ch40------/
+;                                           ch26
+; ch27=0	ch28=0
+; ch29=1	ch30=1
+; ch31=0.5	ch32=0.5
 .set	model=2
 		;channels
-		.db	model+(2<<6),6,0,1,0,0		;adc0 input
-		.db	model+(2<<6),6,1,2,0,0		;adc1 input
 		.db	model+(2<<6),6,27,0,0,0		;ch0 trim (default 0)
 		.db	model+(2<<6),6,28,0,0,0		;ch1 trim
 		.db	model+(2<<6),6,29,0,0,4		;ch0 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,30,0,0,4		;ch1 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,31,0,0,2		;ch0 x0.5
+		.db	model+(2<<6),6,32,0,0,2		;ch1 x0.5
 		;blocks
-		.db	model+(0<<6),10,1,0,1,2,1,0,27,35	;trim for ch0
-		.db	model+(0<<6),10,2,0,1,2,1,1,28,36	;trim for ch1
-		;decriptions
-		.db	model+(3<<6),14,0,"Alula 2CH",0,0
-		.db	model+(3<<6),12,1,"aileron",0,0
-		.db	model+(3<<6),12,2,"elevator",0
+		.db	model+(0<<6),10,1,0,1,2,1,0,27,34	;trim for ch0
+		.db	model+(0<<6),10,2,0,1,2,1,1,28,37	;trim for ch1
+		.db	model+(0<<6),10,3,0,2,2,1,34,29,35	;rev for ch0
+		.db	model+(0<<6),10,4,0,2,2,1,37,30,38	;rev for ch1
+		.db	model+(0<<6),10,5,0,4,2,1,35,31,36	;mul for ch0
+		.db	model+(0<<6),10,6,0,4,2,1,38,32,39	;mul for ch1
+		.db	model+(0<<6),10,7,0,12,2,1,36,40,16	;add for ch0
+		.db	model+(0<<6),10,8,0,12,2,1,36,39,17	;add for ch1
+		.db	model+(0<<6),10,9,0,4,2,1,39,26,40	;mul for inverse ch1
+		;decriptions+block processing order
+		.db	model+(3<<6),13,0,"Delta 2CH",0,model+(1<<6),11,1,2,3,4,5,6,8,9,7
