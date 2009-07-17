@@ -21,6 +21,7 @@
 ; 2009.07.14	- added basic model data with rules for blocks, channels and descriptions
 ;		- some cleanups
 ;		- added limits for generated ppm pulses (0.8...2.2ms)
+; 2009.07.17	- load model from memory
 
 
 .nolist
@@ -43,10 +44,14 @@
 .equ	PPM_CHANNELS=8		;number of output channels
 .equ	PPM_MIN=ZEGAR*8/10000	;0.8ms - absolute minimum
 .equ	PPM_MAX=ZEGAR*22/10000	;2.2ms - absolute maximum
+.equ	MODEL_DELETED=5		;5th bit in header means that block is deleted
+.equ	CHANNEL_ZERO=24		;channel with constant 0
+.equ	CHANNEL_ONE=25		;channel with 1
+.equ	CHANNEL_MONE=26		;channel with -1
 ;numbers
 .equ	L_ZERO=0
-.equ	L_JEDEN=0b0000010000000000	;1 in 6.10
-.equ	L_MJEDEN=0b1111110000000000	;-1 in 6.10
+.equ	L_ONE=0b0000010000000000	;1 in 6.10
+.equ	L_MONE=0b1111110000000000	;-1 in 6.10
 ;keyboard
 .equ	KBD_DELAY=15		;debounce time for keyboard (*2ms)
 .equ	KBD_PORT_0=PORTD
@@ -210,12 +215,12 @@ reset:
 		ldi	XH,high(SRAM_START)
 		ldi	YL,low(SRAM_SIZE)
 		ldi	YH,high(SRAM_SIZE)
-clear_ram:
+reset_1:
 		st	X+,zero
 		dec	YL
-		brne	clear_ram
+		brne	reset_1
 		dec	YH
-		brne	clear_ram
+		brne	reset_1
 		
 		;initialize timers
 		;Timer0 - pwm dla pod¶wietlenia LCD, 150kHz, 25% wypelnienia, wyjscie przez OC0B, no prescaling
@@ -451,22 +456,147 @@ mem_debug:
 .endif
 ;	
 
+;
+; clear ram
+; X - address
+; Y - bytes count
+clear_ram:
+		st	X+,zero
+		dec	YL
+		brne	clear_ram
+		dec	YH
+		brne	clear_ram
+		ret
+;
 
 
 ;
-; ####### math #########
-.dseg
-math_buf:	.byte	8
-.cseg
-
-.equ	math_arg1=math_buf
-.equ	math_arg2=math_buf+2
-.equ	math_arg3=math_buf+4
-.equ	math_arg4=math_buf+6
+; ########### model management routines ################
+;
 
 ;
-; mul without sign
-math_mul_simple:
+; clear channels and initialize special channels with -1,0 and 1
+channels_init:
+		ldi	XL,low(channels)		;clear channels
+		ldi	XH,high(channels)
+		ldi	YL,low(CHANNELS_MAX*2)
+		ldi	YH,high(CHANNELS_MAX*2)
+		rcall	clear_ram
+
+		;sts	channels+(CHANNEL_ZERO*2),zero		;channel with 0
+		;sts	channels+(CHANNEL_ZERO*2)+1,zero
+		ldi	temp,low(L_ONE)				;channel with 1
+		sts	channels+(CHANNEL_ONE*2),temp
+		ldi	temp,high(L_ONE)
+		sts	channels+(CHANNEL_ONE*2)+1,temp
+		ldi	temp,low(L_MONE)			;channel with -1
+		sts	channels+(CHANNEL_MONE*2),temp
+		ldi	temp,high(L_MONE)
+		sts	channels+(CHANNEL_MONE*2)+1,temp
+		ret
+;
+
+
+;
+; load model indicated by cur_model
+load_model:
+		;disable adc and data processing
+		andi	status,~(1<<ADC_ON)
+
+		;clear buffer and channel ram
+		rcall	channels_init			;init special channels (with -1,0 and 1)
+		
+		ldi	XL,low(blocks)			;clear blocks pointers
+		ldi	XH,high(blocks)
+		ldi	YL,low(BLOCKS_MAX)
+		ldi	YH,high(BLOCKS_MAX)
+		rcall	clear_ram
+		
+		sts	sequence,zero			;clear pointer to block processing sequence
+		sts	sequence+1,zero
+
+		ldi	ZL,low(flash_data<<1)		;start of flash
+		ldi	ZH,high(flash_data<<1)
+		ldi	XL,low(flash_data_end<<1)	;end of data in flash
+		ldi	XH,high(flash_data_end<<1)
+		lds	temp4,cur_model			;get model_id
+load_model_1:
+		;mail loop
+		ld	temp,Z				;get first byte (model+deleted+type)
+		andi	temp,0b00011111			;model_id is on 5 bits
+		cp	temp,temp4
+		breq	load_model_2			;check model_id
+load_model_e:
+		;calculate next address and loop if not end of storage
+		ldd	temp3,Z+1
+		add	ZL,temp		;add block length
+		adc	ZH,zero
+		cp	ZL,XL		;check if memory end
+		cpc	ZH,XH
+		brcs	load_model_1
+		;end loading
+		ori	status,(1<<ADC_ON)	;enable ADC
+		ret
+load_model_2:
+		;found container with proper model_id
+		ld	temp,Z
+		andi	temp,0b11000000		;only bits with block type
+		cpi	temp,0b11000000		;description?
+		breq	load_model_e		;if yes, just skip this block
+		cpi	temp,0b01000000		;block processing order
+		brne	load_model_3
+		
+		;block processing order
+		ld	temp,Z
+		sbrs	temp,MODEL_DELETED
+		rjmp	load_model_2_1
+		sts	sequence,ZL		;block is valid
+		sts	sequence+1,ZH
+		rjmp	load_model_e
+load_model_2_1:
+		sts	sequence,zero		;block is invalid and all previos blocks also
+		sts	sequence+1,zero
+		rjmp	load_model_e
+load_model_3:
+		cpi	temp,0			;block?
+		brne	load_model_4
+		;block
+		ldi	YL,low(blocks)		;calculate address in buffer for that block
+		ldi	YH,high(blocks)
+		ldd	temp3,Z+2		;block_id
+		add	YL,temp3
+		adc	YH,zero
+		add	YL,temp3
+		adc	YH,zero
+
+		ld	temp,Z			;check if block is valid
+		sbrs	temp,MODEL_DELETED
+		rjmp	load_model_3_1
+		st	Y,ZL			;block is valid, store block address in buffer
+		std	Y+1,ZH
+		rjmp	load_model_e
+load_model_3_1:
+		st	Y,zero			;block is deleted, clear buffer
+		std	Y+1,zero
+		rjmp	load_model_e
+load_model_4:
+		;channel
+		ldi	YL,low(channels)	;calculate address of channels in table
+		ldi	YH,high(channels)
+		ldd	temp,Z+2		;get channel_id
+		add	YL,temp
+		adc	YH,zero
+		add	YL,temp
+		adc	YH,zero
+
+		ldd	temp,Z+4		;copy channel value
+		st	Y,temp
+		ldd	temp,Z+5
+		std	Y+1,temp
+		rjmp	load_model_e
+;
+
+
 ;
 ; #
 ; ########## END SUBROUTINES ##########
@@ -1034,8 +1164,11 @@ ch_trims:	.dw	0x01FF		;center position for channel 0
 
 
 .include "models.asm"
-flash_pos:
+flash_data_end:
 		.dw	0
+
+.org	0x0f00
+flash_end:
 
 ;.include "version.inc"		;include svn version as firmware version
 .include "bootloader.inc"	;needed for flash reprogramming
@@ -1060,5 +1193,5 @@ data_start:	.db	low(flash_data<<1)
 		.db	high(flash_data<<1)
 data_end:	.db	low(boot_start<<1)
 		.db	high(boot_start<<1)
-data_pos:	.db	low(flash_pos<<1)
-		.db	high(flash_pos<<1)
+data_pos:	.db	low(flash_data_end<<1)
+		.db	high(flash_data_end<<1)
