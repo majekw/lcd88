@@ -21,10 +21,10 @@
 ; 2009.07.14	- added basic model data with rules for blocks, channels and descriptions
 ;		- some cleanups
 ;		- added limits for generated ppm pulses (0.8...2.2ms)
-; 2009.07.17	- load model from memory
+; 2009.07.17	- load model from flash memory
 ; 2009.07.18	- find trims in storage
 ;		- use trims found in storage instead of hardcoded flash location
-
+;		- fixed model_load
 
 .nolist
 .include "m88def.inc"		;standard header for atmega88
@@ -557,13 +557,17 @@ model_load:
 		lds	temp4,cur_model			;get model_id
 model_load_1:
 		;mail loop
-		ld	temp,Z				;get first byte (model+deleted+type)
+		movw	WL,ZL
+		lpm	temp,Z				;get first byte (model+deleted+type)
 		andi	temp,0b00011111			;model_id is on 5 bits
 		cp	temp,temp4
 		breq	model_load_2			;check model_id
 model_load_e:
 		;calculate next address and loop if not end of storage
-		ldd	temp3,Z+1
+		movw	ZL,WL
+		adiw	ZL,1
+		lpm	temp3,Z
+		movw	ZL,WL
 		add	ZL,temp		;add block length
 		adc	ZH,zero
 		cp	ZL,XL		;check if memory end
@@ -574,7 +578,7 @@ model_load_e:
 		ret
 model_load_2:
 		;found container with proper model_id
-		ld	temp,Z
+		lpm	temp,Z
 		andi	temp,0b11000000		;only bits with block type
 		cpi	temp,0b11000000		;description?
 		breq	model_load_e		;if yes, just skip this block
@@ -582,7 +586,7 @@ model_load_2:
 		brne	model_load_3
 		
 		;block processing order
-		ld	temp,Z
+		lpm	temp,Z
 		sbrs	temp,MODEL_DELETED
 		rjmp	model_load_2_1
 		sts	sequence,ZL		;block is valid
@@ -598,13 +602,15 @@ model_load_3:
 		;block
 		ldi	YL,low(blocks)		;calculate address in buffer for that block
 		ldi	YH,high(blocks)
-		ldd	temp3,Z+2		;block_id
+		adiw	ZL,2
+		lpm	temp3,Z			;block_id
 		add	YL,temp3
 		adc	YH,zero
 		add	YL,temp3
 		adc	YH,zero
 
-		ld	temp,Z			;check if block is valid
+		movw	ZL,WL
+		lpm	temp,Z			;check if block is valid
 		sbrs	temp,MODEL_DELETED
 		rjmp	model_load_3_1
 		st	Y,ZL			;block is valid, store block address in buffer
@@ -618,15 +624,18 @@ model_load_4:
 		;channel
 		ldi	YL,low(channels)	;calculate address of channels in table
 		ldi	YH,high(channels)
-		ldd	temp,Z+2		;get channel_id
+		adiw	ZL,2
+		lpm	temp,Z			;get channel_id
 		add	YL,temp
 		adc	YH,zero
 		add	YL,temp
 		adc	YH,zero
 
-		ldd	temp,Z+4		;copy channel value
+		adiw	ZL,2
+		lpm	temp,Z			;copy channel value
 		st	Y,temp
-		ldd	temp,Z+5
+		adiw	ZL,1
+		lpm	temp,Z
 		std	Y+1,temp
 		rjmp	model_load_e
 ;
