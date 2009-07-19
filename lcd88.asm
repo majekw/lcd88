@@ -22,6 +22,8 @@
 ;		- some cleanups
 ;		- added limits for generated ppm pulses (0.8...2.2ms)
 ; 2009.07.17	- load model from memory
+; 2009.07.18	- find trims in storage
+;		- use trims found in storage instead of hardcoded flash location
 
 
 .nolist
@@ -222,6 +224,9 @@ reset_1:
 		dec	YH
 		brne	reset_1
 		
+		;get some data from eeprom
+		rcall	eeprom_init
+
 		;initialize timers
 		;Timer0 - pwm dla pod¶wietlenia LCD, 150kHz, 25% wypelnienia, wyjscie przez OC0B, no prescaling
 		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
@@ -284,6 +289,8 @@ reset_1:
 		
 		waitms	250
 		rcall	lcd_init
+
+		;draw some garbage on lcd
 		m_lcd_set_bg	COLOR_YELLOW
 		m_lcd_set_fg	COLOR_RED
 		m_lcd_fill_rect	10,10,20,20
@@ -304,6 +311,8 @@ reset_1:
 		m_lcd_set_bg	COLOR_WHITE	;set default colors
 		m_lcd_set_fg	COLOR_BLACK
 
+		rcall	trims_find		;find trim data for sticks
+		rcall	find_debug
 
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm
 main_loop:
@@ -433,6 +442,22 @@ status_debug:
 ;
 
 
+;
+;
+find_debug:
+		m_lcd_text_pos	0,12
+		ldi	XL,low(find_debug_val)
+		ldi	XH,high(find_debug_val)
+		ldi	temp2,2
+		rcall	mem_debug
+		ldi	XL,low(trims)
+		ldi	XH,high(trims)
+		ldi	temp2,2
+		rcall	mem_debug
+		ret
+;
+
+
 ; X - memory address
 ; temp2 - number of bytes
 mem_debug:
@@ -471,6 +496,16 @@ clear_ram:
 
 
 ;
+; ########### eeprom routines ###########
+
+;
+; check eeprom, if empty: initialize; if valid: load data from eeprom
+eeprom_init:
+		ret
+;
+
+
+;
 ; ########### model management routines ################
 ;
 
@@ -499,7 +534,7 @@ channels_init:
 
 ;
 ; load model indicated by cur_model
-load_model:
+model_load:
 		;disable adc and data processing
 		andi	status,~(1<<ADC_ON)
 
@@ -520,46 +555,46 @@ load_model:
 		ldi	XL,low(flash_data_end<<1)	;end of data in flash
 		ldi	XH,high(flash_data_end<<1)
 		lds	temp4,cur_model			;get model_id
-load_model_1:
+model_load_1:
 		;mail loop
 		ld	temp,Z				;get first byte (model+deleted+type)
 		andi	temp,0b00011111			;model_id is on 5 bits
 		cp	temp,temp4
-		breq	load_model_2			;check model_id
-load_model_e:
+		breq	model_load_2			;check model_id
+model_load_e:
 		;calculate next address and loop if not end of storage
 		ldd	temp3,Z+1
 		add	ZL,temp		;add block length
 		adc	ZH,zero
 		cp	ZL,XL		;check if memory end
 		cpc	ZH,XH
-		brcs	load_model_1
+		brcs	model_load_1
 		;end loading
 		ori	status,(1<<ADC_ON)	;enable ADC
 		ret
-load_model_2:
+model_load_2:
 		;found container with proper model_id
 		ld	temp,Z
 		andi	temp,0b11000000		;only bits with block type
 		cpi	temp,0b11000000		;description?
-		breq	load_model_e		;if yes, just skip this block
+		breq	model_load_e		;if yes, just skip this block
 		cpi	temp,0b01000000		;block processing order
-		brne	load_model_3
+		brne	model_load_3
 		
 		;block processing order
 		ld	temp,Z
 		sbrs	temp,MODEL_DELETED
-		rjmp	load_model_2_1
+		rjmp	model_load_2_1
 		sts	sequence,ZL		;block is valid
 		sts	sequence+1,ZH
-		rjmp	load_model_e
-load_model_2_1:
+		rjmp	model_load_e
+model_load_2_1:
 		sts	sequence,zero		;block is invalid and all previos blocks also
 		sts	sequence+1,zero
-		rjmp	load_model_e
-load_model_3:
+		rjmp	model_load_e
+model_load_3:
 		cpi	temp,0			;block?
-		brne	load_model_4
+		brne	model_load_4
 		;block
 		ldi	YL,low(blocks)		;calculate address in buffer for that block
 		ldi	YH,high(blocks)
@@ -571,15 +606,15 @@ load_model_3:
 
 		ld	temp,Z			;check if block is valid
 		sbrs	temp,MODEL_DELETED
-		rjmp	load_model_3_1
+		rjmp	model_load_3_1
 		st	Y,ZL			;block is valid, store block address in buffer
 		std	Y+1,ZH
-		rjmp	load_model_e
-load_model_3_1:
+		rjmp	model_load_e
+model_load_3_1:
 		st	Y,zero			;block is deleted, clear buffer
 		std	Y+1,zero
-		rjmp	load_model_e
-load_model_4:
+		rjmp	model_load_e
+model_load_4:
 		;channel
 		ldi	YL,low(channels)	;calculate address of channels in table
 		ldi	YH,high(channels)
@@ -593,10 +628,58 @@ load_model_4:
 		st	Y,temp
 		ldd	temp,Z+5
 		std	Y+1,temp
-		rjmp	load_model_e
+		rjmp	model_load_e
 ;
 
 
+;
+; find data with sticks trims and copy pointer to 'trims' variable
+; trims container have model_id=0, block type and block_id=0
+trims_find:
+		ldi	ZL,low(flash_data<<1)		;start of flash
+		ldi	ZH,high(flash_data<<1)
+		ldi	XL,low(flash_data_end<<1)	;end of data in flash
+		ldi	XH,high(flash_data_end<<1)
+
+trims_find_1:
+		movw	YL,ZL
+		lpm	temp,Z		;check block type
+		tst	temp
+		brne	trims_find_e
+		adiw	ZL,2
+		lpm	temp,Z		;check if block_id=0
+		tst	temp
+		brne	trims_find_e
+		;found trims block
+		movw	ZL,YL
+		adiw	ZL,4		;trim data start = container_start+4
+		sts	trims,ZL
+		sts	trims+1,ZH	;then back to loop, only last container is valid
+trims_find_e:
+		;calculate next address and loop if not end of storage
+		movw	ZL,YL
+		adiw	ZL,1
+		lpm	temp,Z
+		tst	temp		;just in case that block len=0
+		breq	trims_find_e1
+		movw	ZL,YL
+		add	ZL,temp		;add block length
+		adc	ZH,zero
+		cp	ZL,XL		;check if memory end
+		cpc	ZH,XH
+		brcs	trims_find_1
+trims_find_e1:
+.ifdef DEBUG
+		sts	find_debug_val,ZL
+		sts	find_debug_val+1,ZH
+.endif
+		ret
+;
+.ifdef DEBUG
+.dseg
+find_debug_val:	.byte	2
+.cseg
+.endif
 ;
 ; #
 ; ########## END SUBROUTINES ##########
@@ -860,8 +943,8 @@ adcc_1:
 		push	XL
 		push	XH
 
-		ldi	ZL,low(ch_trims<<1)	;calculate data start for current channel
-		ldi	ZH,high(ch_trims<<1)
+		lds	ZL,trims		;calculate data start for current channel
+		lds	ZH,trims+1
 		lds	itemp,adc_channel
 adcc_2:
 		tst	itemp
@@ -1179,9 +1262,13 @@ flash_end:
 channels:	.byte	CHANNELS_MAX*2	;memory for channel values
 blocks:		.byte	BLOCKS_MAX*2	;pointers to blocks
 sequence:	.byte	2		;pointer to processing sequence block
-cur_model:		.byte	1		;current model
+cur_model:		.byte	1	;current model
+trims:			.byte	2	;pointer to trims data
 ;wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
 ;
+
+
+
 ; ############ EEPROM #####################
 ; #
 .eseg
