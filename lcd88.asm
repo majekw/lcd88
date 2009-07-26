@@ -665,7 +665,7 @@ trims_find_1:
 		sts	trims,ZL
 		sts	trims+1,ZH	;then back to loop, only last container is valid
 trims_find_e:
-		;calculate next address and loop if not end of storage
+		;calculate next address and loop if not the end of storage
 		movw	ZL,YL
 		adiw	ZL,1
 		lpm	temp,Z
