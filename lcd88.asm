@@ -25,7 +25,12 @@
 ; 2009.07.18	- find trims in storage
 ;		- use trims found in storage instead of hardcoded flash location
 ;		- fixed model_load
-; 2009.08.15	- multitasking code:  (value calulations moved to task_calc)
+; 2009.08.15	- simple multitasking code:  (value calulations moved to task_calc)
+;		- eeprom_init
+;		- clean up source (comments, ascii arts and other useless stuff)
+;		- load last model on startup
+;		- fixed another ugly bug in model_load
+;		- added searching for model description in model_load
 
 
 .nolist
@@ -89,40 +94,6 @@
 .equ	MODEL_CHANGED=7
 ; status
 
-; ***** REJESTRY *****
-; r0	roboczy
-; r1	roboczy
-; r2	zero (0)	;sta³a 0
-; r3
-; r4	temp3
-; r5	temp4
-; r6	itemp3
-; r7	itemp4
-; r8	t2fix		;licznik do korekcji odmierzania ms
-; r9	temp5
-; r10	temp6
-; r11	temp7
-; r12	fgcolorl	;kolor pixla
-; r13	fgcolorh
-; r14	bgcolorl	;kolor tla
-; r15	bgcolorh
-;
-; r16	temp		;rejestry tymczasowe dla normalnej czê¶æi aplikacji (nie przerwañ)
-; r17	temp2
-; r18
-; r19	status		;status
-; r20	itemp		;tempy wykorzystywane w przerwaniach
-; r21	itemp2
-; r22	mscountl	;licznik milisekund dla waitms
-; r23	mscounth
-; r24	WL
-; r25   WH
-; r26	XL		;
-; r27	XH
-; r28	YL		;
-; r29	YH
-; r30	ZL	- lpm
-; r31	ZH
 
 .def		zero=r2
 .def		temp3=r4
@@ -143,14 +114,18 @@
 .def		mscounth=r23
 .def		WL=r24
 .def		WH=r25
+; r26	XL		;
+; r27	XH
+; r28	YL		;
+; r29	YH
+; r30	ZL	- lpm
+; r31	ZH
 
 
-
-
-; ******** HARDWARE ********
-
-
-; ###### makra ######
+;
+; ##########################
+; ######### MACROS #########
+; ##########################
 ; #
 
 ; czeka x ms
@@ -161,6 +136,14 @@
 		pop	temp2
 .endmacro
 
+;
+; #
+; #############################
+; ######## END OF MACROS ######
+; #############################
+
+
+
 ; # important global ram variables
 .dseg
 ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and MATH
@@ -168,7 +151,12 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 
 
 
-;****Source code***************************************************
+;
+; ##########################################################################
+; ########### MAIN CODE ####################################################
+; ##########################################################################
+; #
+
 .list
 .cseg					;CODE segment
 .org 0
@@ -200,7 +188,7 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 		reti		;SPM ready
 
 
-; # Wy¶wietlacz LCD
+; # LCD code
 .include	"lcd-s65.asm"
 
 ; # main program
@@ -290,8 +278,20 @@ reset_1:
 		rcall	lcd_initialize
 
 		rcall	trims_find		;find trim data for sticks
+		
+		rcall	model_load		;load last used model
 
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
+		
+		;print model name
+		m_lcd_text_pos	0,3
+		lds	ZL,model_name
+		lds	ZH,model_name+1
+		adiw	ZL,3
+		rcall	lcd_text
+
+
+		; #################### MAIN LOOP #####################
 main_loop:
 
 .ifdef DEBUG
@@ -306,11 +306,15 @@ main_loop:
 
 
 		rjmp	main_loop
-banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
+
+		; ################### END OF MAIN LOOP ################
 
 
 
-; ######### SUBROUTINES ###########
+
+; ####################################################################
+; ############    SUBROUTINES    #####################################
+; ####################################################################
 ; #
 
 ;
@@ -340,6 +344,7 @@ lcd_initialize:
 		m_lcd_set_bg	COLOR_WHITE	;set default colors
 		m_lcd_set_fg	COLOR_BLACK
 		ret
+banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
 ;
 
 
@@ -374,6 +379,353 @@ tohex1:		ret
 ;
 
 
+
+;
+; clear ram
+; X - address
+; Y - bytes count
+clear_ram:
+		st	X+,zero
+		dec	YL
+		brne	clear_ram
+		dec	YH
+		brne	clear_ram
+		ret
+;
+
+
+;
+; ########### eeprom routines ###########
+
+;
+; check eeprom, if empty: initialize; if valid: load data from eeprom
+eeprom_init:
+		;check for correct eeprom signature and version
+		out	EEARH,zero	;first byte
+		out	EEARL,zero
+		sbi	EECR,EERE
+		in	temp,EEDR
+		cpi	temp,EE_SIG1
+		brne	eeprom_init_1
+		
+		ldi	temp,1		;second byte
+		out	EEARL,temp
+		sbi	EECR,EERE
+		in	temp,EEDR
+		cpi	temp,EE_SIG2
+		brne	eeprom_init_1
+		
+		ldi	temp,2		;version
+		out	EEARL,temp
+		sbi	EECR,EERE
+		in	temp,EEDR
+		cpi	temp,EE_VERSION
+		brne	eeprom_init_1
+		
+		;read some values from eeprom
+		ldi	temp,high(ee_last_model)	;restore last used model
+		out	EEARH,temp
+		ldi	temp,low(ee_last_model)
+		out	EEARL,temp
+		sbi	EECR,EERE
+		in	temp,EEDR
+		sts	cur_model,temp
+		
+		ret
+eeprom_init_1:
+		;eeprom not valid - we must initialize it
+		
+		;write signature and version
+		clr	XL		;first byte of signature
+		clr	XH
+		ldi	temp,EE_SIG1
+		rcall	eeprom_write
+		
+		adiw	XL,1		;second byte of signature
+		ldi	temp,EE_SIG2
+		rcall	eeprom_write
+		
+		adiw	XL,1		;eeprom version
+		ldi	temp,EE_VERSION
+		rcall	eeprom_write
+		
+		;write first model as last used
+		ldi	XL,low(ee_last_model)
+		ldi	XH,high(ee_last_model)
+		ldi	temp,1
+		sts	cur_model,temp		;store also as current model
+		rcall	eeprom_write
+		
+		;initialize end of flash data position
+		ldi	temp,low(flash_data_end<<1)
+		ldi	XL,low(ee_data_pos)
+		ldi	XH,high(ee_data_pos)
+		rcall	eeprom_write
+		adiw	XL,1
+		ldi	temp,high(flash_data_end<<1)
+		rcall	eeprom_write
+		
+		ret
+;
+
+;
+; write to eeprom
+; temp - value
+; X - address
+eeprom_write:
+		sbic	EECR,EEPE	;wait for last write to complete
+		rjmp	eeprom_write
+		
+		out	EEARH,XH
+		out	EEARL,XL
+		out	EEDR,temp
+		
+		brie	eeprom_write_1	;don't do mess with interrupts
+		sbi	EECR,EEMPE
+		sbi	EECR,EEPE
+		ret
+eeprom_write_1:
+		cli
+		sbi	EECR,EEMPE
+		sbi	EECR,EEPE
+		sei
+		ret
+
+;
+
+
+;
+; ########### model management routines ################
+;
+
+;
+; clear channels and initialize special channels with -1,0 and 1
+channels_init:
+		ldi	XL,low(channels)		;clear channels
+		ldi	XH,high(channels)
+		ldi	YL,low(CHANNELS_MAX*2)
+		ldi	YH,high(CHANNELS_MAX*2)
+		rcall	clear_ram
+
+		;sts	channels+(CHANNEL_ZERO*2),zero		;channel with 0
+		;sts	channels+(CHANNEL_ZERO*2)+1,zero
+		ldi	temp,low(L_ONE)				;channel with 1
+		sts	channels+(CHANNEL_ONE*2),temp
+		ldi	temp,high(L_ONE)
+		sts	channels+(CHANNEL_ONE*2)+1,temp
+		ldi	temp,low(L_MONE)			;channel with -1
+		sts	channels+(CHANNEL_MONE*2),temp
+		ldi	temp,high(L_MONE)
+		sts	channels+(CHANNEL_MONE*2)+1,temp
+		ret
+;
+
+
+;
+; load model indicated by cur_model
+model_load:
+		;disable adc and data processing
+		andi	status,~(1<<ADC_ON)
+		waitms	50		;be sure that nothing is working in background
+
+		;clear buffer and channel ram
+		rcall	channels_init			;init special channels (with -1,0 and 1)
+		
+		ldi	XL,low(blocks)			;clear blocks pointers
+		ldi	XH,high(blocks)
+		ldi	YL,low(BLOCKS_MAX*2)
+		ldi	YH,high(BLOCKS_MAX*2)
+		rcall	clear_ram
+		
+		sts	sequence,zero			;clear pointer to block processing sequence
+		sts	sequence+1,zero
+
+		ldi	ZL,low(flash_data<<1)		;start of flash
+		ldi	ZH,high(flash_data<<1)
+		ldi	XL,low(flash_data_end<<1)	;end of data in flash
+		ldi	XH,high(flash_data_end<<1)
+		lds	temp4,cur_model			;get model_id
+		
+model_load_1:
+		;mail loop
+		movw	WL,ZL
+		lpm	temp,Z				;get first byte (model+deleted+type)
+		andi	temp,0b00011111			;model_id is on 5 bits
+		cp	temp,temp4
+		breq	model_load_2			;check model_id
+model_load_e:
+		;calculate next address and loop if not end of storage
+		movw	ZL,WL
+		adiw	ZL,1
+		lpm	temp3,Z
+		tst	temp3		;just in case that block length=0 (corrupted data)
+		breq	model_load_e1
+		movw	ZL,WL
+		add	ZL,temp3	;add block length
+		adc	ZH,zero
+		cp	ZL,XL		;check if memory end
+		cpc	ZH,XH
+		brcs	model_load_1
+		;end loading
+model_load_e1:
+		ori	status,(1<<ADC_ON)	;enable ADC
+		ret
+
+model_load_2:
+		;found container with proper model_id
+		;rjmp	model_load_e
+		lpm	temp,Z
+		andi	temp,0b11000000		;only bits with block type
+		cpi	temp,0b11000000		;description?
+		breq	model_load_5		;if yes, go next
+		cpi	temp,0b01000000		;block processing order
+		brne	model_load_3
+		
+		;block processing order
+		lpm	temp,Z
+		sbrc	temp,MODEL_DELETED
+		rjmp	model_load_2_1
+		sts	sequence,ZL		;block is valid
+		sts	sequence+1,ZH
+		rjmp	model_load_e
+model_load_2_1:
+		sts	sequence,zero		;block is invalid and all previos blocks also
+		sts	sequence+1,zero
+		rjmp	model_load_e
+
+model_load_3:
+		cpi	temp,0			;block?
+		brne	model_load_4
+		;block
+		ldi	YL,low(blocks)		;calculate address in buffer for that block
+		ldi	YH,high(blocks)
+		adiw	ZL,2
+		lpm	temp3,Z			;block_id
+		add	YL,temp3		;calculate address of block pointer in table
+		adc	YH,zero
+		add	YL,temp3
+		adc	YH,zero
+
+		movw	ZL,WL
+		lpm	temp,Z			;check if block is valid
+		sbrc	temp,MODEL_DELETED
+		rjmp	model_load_3_1
+		st	Y,ZL			;block is valid, store block address in buffer
+		std	Y+1,ZH
+		rjmp	model_load_e
+model_load_3_1:
+		st	Y,zero			;block is deleted, clear buffer
+		std	Y+1,zero
+		rjmp	model_load_e
+
+model_load_4:
+		;channel
+		ldi	YL,low(channels)	;calculate address of channels in table
+		ldi	YH,high(channels)
+		adiw	ZL,2
+		lpm	temp,Z			;get channel_id
+		add	YL,temp			;calculate channel address
+		adc	YH,zero
+		add	YL,temp
+		adc	YH,zero
+
+		adiw	ZL,2
+		lpm	temp,Z			;copy channel value
+		st	Y,temp
+		adiw	ZL,1
+		lpm	temp,Z
+		std	Y+1,temp
+		rjmp	model_load_e
+
+model_load_5:	;model name
+		adiw	ZL,2			;check for description id=0
+		lpm	temp,Z
+		tst	temp
+		brne	model_load_5_2		;workaround na model_load_e (too far)
+		movw	ZL,WL
+		lpm	temp,Z
+		sbrc	temp,MODEL_DELETED
+		rjmp	model_load_5_1
+		sts	model_name,ZL		;description is valid
+		sts	model_name+1,ZH
+		rjmp	model_load_e
+model_load_5_1:
+		sts	model_name,zero		;description is invalid and all previos also
+		sts	model_name+1,zero
+model_load_5_2:
+		rjmp	model_load_e
+;
+
+
+;
+; find data with sticks trims and copy pointer to 'trims' variable
+; trims container have model_id=0, block type and block_id=0
+trims_find:
+		ldi	ZL,low(flash_data<<1)		;start of flash
+		ldi	ZH,high(flash_data<<1)
+		ldi	XL,low(flash_data_end<<1)	;end of data in flash
+		ldi	XH,high(flash_data_end<<1)
+
+trims_find_1:
+		movw	YL,ZL
+		lpm	temp,Z		;check block type
+		tst	temp
+		brne	trims_find_e
+		adiw	ZL,2
+		lpm	temp,Z		;check if block_id=0
+		tst	temp
+		brne	trims_find_e
+		;found trims block
+		movw	ZL,YL
+		adiw	ZL,4		;trim data start = container_start+4
+		sts	trims,ZL
+		sts	trims+1,ZH	;then back to loop, only last container is valid
+trims_find_e:
+		;calculate next address and loop if not the end of storage
+		movw	ZL,YL
+		adiw	ZL,1
+		lpm	temp,Z
+		tst	temp		;just in case that block len=0
+		breq	trims_find_e1
+		movw	ZL,YL
+		add	ZL,temp		;add block length
+		adc	ZH,zero
+		cp	ZL,XL		;check if memory end
+		cpc	ZH,XH
+		brcs	trims_find_1
+trims_find_e1:
+.ifdef DEBUG
+		sts	find_debug_val,ZL
+		sts	find_debug_val+1,ZH
+		rcall	find_debug
+.dseg
+find_debug_val:	.byte	2
+.cseg
+.endif
+		ret
+;
+
+
+;
+; task for processing all values
+task_calc:
+		;copy input to output
+		ldi	XL,low(channels)
+		ldi	XH,high(channels)
+		ldi	ZL,low(channels+32)
+		ldi	ZH,high(channels+32)
+		ldi	temp2,16
+l1:
+		ld	temp,X+
+		st	Z+,temp
+		dec	temp2
+		brne	l1
+
+		rjmp	task_switch_to_main	;end of this task
+;
+
+
+; #####################  DEBUG ROUTINES ############################
 ;
 ; # wyswietla wartosci z bajtow klawiatury
 .ifdef DEBUG
@@ -475,244 +827,24 @@ mem_debug:
 ;
 .endif
 ;	
-
-;
-; clear ram
-; X - address
-; Y - bytes count
-clear_ram:
-		st	X+,zero
-		dec	YL
-		brne	clear_ram
-		dec	YH
-		brne	clear_ram
-		ret
-;
-
-
-;
-; ########### eeprom routines ###########
-
-;
-; check eeprom, if empty: initialize; if valid: load data from eeprom
-eeprom_init:
-		ret
-;
-
-
-;
-; ########### model management routines ################
-;
-
-;
-; clear channels and initialize special channels with -1,0 and 1
-channels_init:
-		ldi	XL,low(channels)		;clear channels
-		ldi	XH,high(channels)
-		ldi	YL,low(CHANNELS_MAX*2)
-		ldi	YH,high(CHANNELS_MAX*2)
-		rcall	clear_ram
-
-		;sts	channels+(CHANNEL_ZERO*2),zero		;channel with 0
-		;sts	channels+(CHANNEL_ZERO*2)+1,zero
-		ldi	temp,low(L_ONE)				;channel with 1
-		sts	channels+(CHANNEL_ONE*2),temp
-		ldi	temp,high(L_ONE)
-		sts	channels+(CHANNEL_ONE*2)+1,temp
-		ldi	temp,low(L_MONE)			;channel with -1
-		sts	channels+(CHANNEL_MONE*2),temp
-		ldi	temp,high(L_MONE)
-		sts	channels+(CHANNEL_MONE*2)+1,temp
-		ret
-;
-
-
-;
-; load model indicated by cur_model
-model_load:
-		;disable adc and data processing
-		andi	status,~(1<<ADC_ON)
-
-		;clear buffer and channel ram
-		rcall	channels_init			;init special channels (with -1,0 and 1)
-		
-		ldi	XL,low(blocks)			;clear blocks pointers
-		ldi	XH,high(blocks)
-		ldi	YL,low(BLOCKS_MAX)
-		ldi	YH,high(BLOCKS_MAX)
-		rcall	clear_ram
-		
-		sts	sequence,zero			;clear pointer to block processing sequence
-		sts	sequence+1,zero
-
-		ldi	ZL,low(flash_data<<1)		;start of flash
-		ldi	ZH,high(flash_data<<1)
-		ldi	XL,low(flash_data_end<<1)	;end of data in flash
-		ldi	XH,high(flash_data_end<<1)
-		lds	temp4,cur_model			;get model_id
-model_load_1:
-		;mail loop
-		movw	WL,ZL
-		lpm	temp,Z				;get first byte (model+deleted+type)
-		andi	temp,0b00011111			;model_id is on 5 bits
-		cp	temp,temp4
-		breq	model_load_2			;check model_id
-model_load_e:
-		;calculate next address and loop if not end of storage
-		movw	ZL,WL
-		adiw	ZL,1
-		lpm	temp3,Z
-		movw	ZL,WL
-		add	ZL,temp		;add block length
-		adc	ZH,zero
-		cp	ZL,XL		;check if memory end
-		cpc	ZH,XH
-		brcs	model_load_1
-		;end loading
-		ori	status,(1<<ADC_ON)	;enable ADC
-		ret
-model_load_2:
-		;found container with proper model_id
-		lpm	temp,Z
-		andi	temp,0b11000000		;only bits with block type
-		cpi	temp,0b11000000		;description?
-		breq	model_load_e		;if yes, just skip this block
-		cpi	temp,0b01000000		;block processing order
-		brne	model_load_3
-		
-		;block processing order
-		lpm	temp,Z
-		sbrs	temp,MODEL_DELETED
-		rjmp	model_load_2_1
-		sts	sequence,ZL		;block is valid
-		sts	sequence+1,ZH
-		rjmp	model_load_e
-model_load_2_1:
-		sts	sequence,zero		;block is invalid and all previos blocks also
-		sts	sequence+1,zero
-		rjmp	model_load_e
-model_load_3:
-		cpi	temp,0			;block?
-		brne	model_load_4
-		;block
-		ldi	YL,low(blocks)		;calculate address in buffer for that block
-		ldi	YH,high(blocks)
-		adiw	ZL,2
-		lpm	temp3,Z			;block_id
-		add	YL,temp3
-		adc	YH,zero
-		add	YL,temp3
-		adc	YH,zero
-
-		movw	ZL,WL
-		lpm	temp,Z			;check if block is valid
-		sbrs	temp,MODEL_DELETED
-		rjmp	model_load_3_1
-		st	Y,ZL			;block is valid, store block address in buffer
-		std	Y+1,ZH
-		rjmp	model_load_e
-model_load_3_1:
-		st	Y,zero			;block is deleted, clear buffer
-		std	Y+1,zero
-		rjmp	model_load_e
-model_load_4:
-		;channel
-		ldi	YL,low(channels)	;calculate address of channels in table
-		ldi	YH,high(channels)
-		adiw	ZL,2
-		lpm	temp,Z			;get channel_id
-		add	YL,temp
-		adc	YH,zero
-		add	YL,temp
-		adc	YH,zero
-
-		adiw	ZL,2
-		lpm	temp,Z			;copy channel value
-		st	Y,temp
-		adiw	ZL,1
-		lpm	temp,Z
-		std	Y+1,temp
-		rjmp	model_load_e
-;
-
-
-;
-; find data with sticks trims and copy pointer to 'trims' variable
-; trims container have model_id=0, block type and block_id=0
-trims_find:
-		ldi	ZL,low(flash_data<<1)		;start of flash
-		ldi	ZH,high(flash_data<<1)
-		ldi	XL,low(flash_data_end<<1)	;end of data in flash
-		ldi	XH,high(flash_data_end<<1)
-
-trims_find_1:
-		movw	YL,ZL
-		lpm	temp,Z		;check block type
-		tst	temp
-		brne	trims_find_e
-		adiw	ZL,2
-		lpm	temp,Z		;check if block_id=0
-		tst	temp
-		brne	trims_find_e
-		;found trims block
-		movw	ZL,YL
-		adiw	ZL,4		;trim data start = container_start+4
-		sts	trims,ZL
-		sts	trims+1,ZH	;then back to loop, only last container is valid
-trims_find_e:
-		;calculate next address and loop if not the end of storage
-		movw	ZL,YL
-		adiw	ZL,1
-		lpm	temp,Z
-		tst	temp		;just in case that block len=0
-		breq	trims_find_e1
-		movw	ZL,YL
-		add	ZL,temp		;add block length
-		adc	ZH,zero
-		cp	ZL,XL		;check if memory end
-		cpc	ZH,XH
-		brcs	trims_find_1
-trims_find_e1:
-.ifdef DEBUG
-		sts	find_debug_val,ZL
-		sts	find_debug_val+1,ZH
-		rcall	find_debug
-.dseg
-find_debug_val:	.byte	2
-.cseg
-.endif
-		ret
-;
-
-
-;
-; task for processing all values
-task_calc:
-		;copy input to output
-		ldi	XL,low(channels)
-		ldi	XH,high(channels)
-		ldi	ZL,low(channels+32)
-		ldi	ZH,high(channels+32)
-		ldi	temp2,16
-l1:
-		ld	temp,X+
-		st	Z+,temp
-		dec	temp2
-		brne	l1
-
-		rjmp	task_switch_to_main	;end of this task
-;
-
-
+; ######## END OF DEBUG ROUTINES #########
 ;
 ; #
-; ########## END SUBROUTINES ##########
+; ###############################################################
+; ################# END OF SUBROUTINES ##########################
+; ###############################################################
+;
+
 
 ;
-; ############ INTERRUPTS ################
+; ###############################################################
+; ####################      INTERRUPTS       ####################
+; ###############################################################
 ; #
 
+
 ;
+; ########## TIMER2 (time counting) ##################
 ; timer2 compare match A : time counting
 t2cm:
 		in	itemp,SREG
@@ -768,6 +900,7 @@ r2cm_e:
 
 
 ;
+; ################# KEYBOARD ######################
 ; keyboard scan
 kbd_scan:
 		push	XL					;2
@@ -935,7 +1068,9 @@ key_5:		.byte	1	;right
 count20ms:	.byte	1	;counter for counting 20ms
 .cseg
 
+
 ;
+; ################### ADC CONVERSION AND CALCULATION ################
 ; ADC conversion complete
 adcc:
 		in	itemp,SREG
@@ -1113,6 +1248,7 @@ adc_buffer:	.byte	8*2	;buffer for processed adc values (values must be copied at
 
 
 ;
+; ################# PWM GENERATING #########################
 ; timer 1 compare B match (middle of pwm)
 t1cm:
 		in	itemp,SREG
@@ -1252,10 +1388,15 @@ ppm_debug_val:	.byte	2
 
 
 ; #
-; ############ END INTERRUPTS ############
+; ###########################################################
+; #################  END OF INTERRUPTS   ####################
+; ###########################################################
 ;
 
-; ############ MULTITASKING ##############
+
+; ###########################################################
+; ###############      MULTITASKING      ####################
+; ###########################################################
 ; #
 
 ; Idea:
@@ -1274,7 +1415,7 @@ ppm_debug_val:	.byte	2
 ;
 
 ;
-; switch to main task (lcd, keyboard etc)
+; switch to main task (lcd, keyboard etc), called directly at end of task_calc
 task_switch_to_main:
 		;restore registers
 		lds	r0,task_space
@@ -1318,7 +1459,7 @@ task_switch_to_main:
 ;
 
 ;
-; switch to calc task (calulate all blocks)
+; switch to calc task (calulate all blocks), called from ADC interrupt
 task_switch_to_calc:
 		sts	task_space,r0
 		sts	task_space+1,r1
@@ -1364,10 +1505,15 @@ task_switch_to_calc:
 task_space:	.byte	25
 .cseg
 ; #
-; ############ END OF MULTITASKING #######
+; ############################################################
+; ##################  END OF MULTITASKING ####################
+; ############################################################
 
 
-; ############ D A T A ##############
+
+; ############################################################
+; ###############    FLASH   D A T A    ######################
+; ############################################################
 ; #
 flash_data:
 		.db	0,84,0,0	;header
@@ -1383,40 +1529,61 @@ ch_trims:	.dw	0x01FF		;center position for channel 0
 		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 6
 		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 7
 
-
+; ####### INCLUDE BASIC MODEL DEFINITIONS #############
 .include "models.asm"
 flash_data_end:
-		.dw	0
+		.dw	0xff
 
-.org	0x0f00
-flash_end:
+;
+; #
+; #############################################################
+; #############    END OF FLASH DATA    #######################
+; #############################################################
+
 
 ;.include "version.inc"		;include svn version as firmware version
+
+; ####### BOOTLOADER HEADER (include boot_block_write sub) ######
+.org	0x0f00
+flash_end:
 .include "bootloader.inc"	;needed for flash reprogramming
 
 
-; ############ VARIABLES ####################
+; ##############################################################
+; #################    RAM VARIABLES    ########################
+; ##############################################################
+; #
 .dseg
 channels:	.byte	CHANNELS_MAX*2	;memory for channel values
 blocks:		.byte	BLOCKS_MAX*2	;pointers to blocks
 sequence:	.byte	2		;pointer to processing sequence block
 cur_model:		.byte	1	;current model
 trims:			.byte	2	;pointer to trims data
+model_name:		.byte	2	;pointer to model name
 ;wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
 ;
 
+; #
+; ###############################################################
+; #############  END OF RAM VARIABLES   #########################
+; ###############################################################
 
 
-; ############ EEPROM #####################
+
+
+; ###############################################################
+; ######################    EEPROM DATA   #######################
+; ###############################################################
 ; #
 .eseg
 .org	0
 eesig:		.db	EE_SIG1,EE_SIG2	;signature
 		.db	EE_VERSION		;eeprom variables version
-last_model:	.db	1
-data_start:	.db	low(flash_data<<1)
-		.db	high(flash_data<<1)
-data_end:	.db	low(boot_start<<1)
-		.db	high(boot_start<<1)
-data_pos:	.db	low(flash_data_end<<1)
+ee_last_model:	.db	1
+ee_data_pos:	.db	low(flash_data_end<<1)
 		.db	high(flash_data_end<<1)
+
+; #
+; ################################################################
+; ##############      E      N      D        #####################
+; ################################################################
