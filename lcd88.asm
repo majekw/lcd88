@@ -25,6 +25,8 @@
 ; 2009.07.18	- find trims in storage
 ;		- use trims found in storage instead of hardcoded flash location
 ;		- fixed model_load
+; 2009.08.15	- multitasking code:  (value calulations moved to task_calc)
+
 
 .nolist
 .include "m88def.inc"		;standard header for atmega88
@@ -38,7 +40,9 @@
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
 .equ	CHANNELS_MAX=256
 .equ	BLOCKS_MAX=128		;253 is absolute max
-.equ	VERSION=1		;must be changed if eeprom format will change
+.equ	EE_SIG1=0xaa		;first byte of eeprom signature
+.equ	EE_SIG2=0x55		;second byte of eeprom signature
+.equ	EE_VERSION=1		;must be changed if eeprom format will change
 .equ	TRIM_BYTES=10		;how much bytes are used to trim each a/c channel to produce -1..1 result
 .equ	PPM_INTERVAL=20		;20ms for each frame
 .equ	PPM_SYNC=ZEGAR*3/10000	;0.3ms
@@ -131,6 +135,7 @@
 ;.def		temp7=r11
 .def		temp=r16	;zwykly rejestr tymczasowy
 .def		temp2=r17	;drugi temp
+.def		statush=r18
 .def		status=r19
 .def		itemp=r20	;jw. ale do wykorzystania w przerwaniach
 .def		itemp2=r21	;drugi temp dla przerwañ
@@ -228,12 +233,12 @@ reset_1:
 		rcall	eeprom_init
 
 		;initialize timers
-		;Timer0 - pwm dla pod¶wietlenia LCD, 150kHz, 25% wypelnienia, wyjscie przez OC0B, no prescaling
+		;Timer0 - pwm for LCD backlight, 150kHz, 75% duty, output via OC0B, no prescaling
 		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
 		out	OCR0A,temp
 		ldi	temp,(ZEGAR/LCD_PWM*75/100)	;75%
 		out	OCR0B,temp
-		ldi	temp,(1<<COM0B1)+(1<<WGM01)+(1<<WGM00)	;OC0B out, fast PWM z CTC
+		ldi	temp,(1<<COM0B1)+(1<<WGM01)+(1<<WGM00)	;OC0B out, fast PWM with CTC
 		out	TCCR0A,temp
 		ldi	temp,(1<<WGM02)+(1<<CS00)
 		out	TCCR0B,temp
@@ -258,15 +263,15 @@ reset_1:
 		sts	ppm_channel,temp
 		sbi	DDRB,PB2		;output
 		
-		;Timer2 - odliczanie czasu, ~1kHz, ctc, przerwania
+		;Timer2 - time counting, ~1kHz, ctc, interrupts
 		ldi	temp,(1<<WGM21)	;ctc
 		sts	TCCR2A,temp
 		ldi	temp,(1<<CS22)	;/64
 		sts	TCCR2B,temp
-		ldi	temp,ZEGAR_MAX	;liczymy do ZEGAR_MAX
+		ldi	temp,ZEGAR_MAX	;counting up to ZEGAR_MAX
 		sts	OCR2A,temp
 		sts	ASSR,zero	;na pewno synchroniczny
-		ldi	temp,(1<<OCIE2A)	;przerwanie przy przepelnieniu licznika
+		ldi	temp,(1<<OCIE2A)	;interrupt on timer overflow
 		sts	TIMSK2,temp
 
 		;ADC
@@ -282,11 +287,35 @@ reset_1:
 		sei
 
 		;initialize lcd
-		sbi	DDRB,PB2	;SS - must be output
-		;sbi	DDRB,PB5	;SCK: output
-		;sbi	DDRB,PB3	;MOSI: output
-		;sbi	LCD_DDR_LED,LCD_LED	;backlight: output
-		
+		rcall	lcd_initialize
+
+		rcall	trims_find		;find trim data for sticks
+
+		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
+main_loop:
+
+.ifdef DEBUG
+		rcall	kbd_debug
+		waitms	5
+		rcall	adc_debug
+		waitms	5
+		rcall	status_debug
+		waitms	5
+		rcall	ppm_debug
+.endif
+
+
+		rjmp	main_loop
+banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
+
+
+
+; ######### SUBROUTINES ###########
+; #
+
+;
+; init lcd screen and draw something on it
+lcd_initialize:
 		waitms	250
 		rcall	lcd_init
 
@@ -310,42 +339,8 @@ reset_1:
 		
 		m_lcd_set_bg	COLOR_WHITE	;set default colors
 		m_lcd_set_fg	COLOR_BLACK
-
-		rcall	trims_find		;find trim data for sticks
-		rcall	find_debug
-
-		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm
-main_loop:
-		;copy input to output
-		ldi	XL,low(channels)
-		ldi	XH,high(channels)
-		ldi	ZL,low(channels+32)
-		ldi	ZH,high(channels+32)
-		ldi	temp2,16
-l1:
-		ld	temp,X+
-		st	Z+,temp
-		dec	temp2
-		brne	l1
-
-.ifdef DEBUG
-		rcall	kbd_debug
-		waitms	5
-		rcall	adc_debug
-		waitms	5
-		rcall	status_debug
-		waitms	5
-		rcall	ppm_debug
-.endif
-
-
-		rjmp	main_loop
-banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
-
-
-
-; ######### SUBROUTINES ###########
-; #
+		ret
+;
 
 
 ;
@@ -681,14 +676,34 @@ trims_find_e1:
 .ifdef DEBUG
 		sts	find_debug_val,ZL
 		sts	find_debug_val+1,ZH
-.endif
-		ret
-;
-.ifdef DEBUG
+		rcall	find_debug
 .dseg
 find_debug_val:	.byte	2
 .cseg
 .endif
+		ret
+;
+
+
+;
+; task for processing all values
+task_calc:
+		;copy input to output
+		ldi	XL,low(channels)
+		ldi	XH,high(channels)
+		ldi	ZL,low(channels+32)
+		ldi	ZH,high(channels+32)
+		ldi	temp2,16
+l1:
+		ld	temp,X+
+		st	Z+,temp
+		dec	temp2
+		brne	l1
+
+		rjmp	task_switch_to_main	;end of this task
+;
+
+
 ;
 ; #
 ; ########## END SUBROUTINES ##########
@@ -1084,6 +1099,9 @@ adcc_e:
 		pop	ZH
 		pop	ZL
 		
+		sbrc	status,ADC_READY	;perform task switch if all channels processed
+		rjmp	task_switch_to_calc
+		
 		pop	itemp
 		out	SREG,itemp
 		reti
@@ -1237,6 +1255,117 @@ ppm_debug_val:	.byte	2
 ; ############ END INTERRUPTS ############
 ;
 
+; ############ MULTITASKING ##############
+; #
+
+; Idea:
+; 'Main' task is working all the time.
+; After last conversion (in interrupt routine), task is switched to 'calc' task.
+; 'Calc' task is running until finishes it's job (it's kind of interrupt routine,
+; but with other interrupts enabled). After that, it trigger task switch to 'main'.
+;
+; Switch to 'calc':
+; - save all 'main' registers
+; - jump to 'calc'
+;
+; Switch to 'main'
+; - restore 'main' registers
+; - restore PC, so 'main' can continue
+;
+
+;
+; switch to main task (lcd, keyboard etc)
+task_switch_to_main:
+		;restore registers
+		lds	r0,task_space
+		lds	r1,task_space+1
+		;sts	task_space+1,r2		;zero
+		lds	r3,task_space+2
+		lds	r4,task_space+3
+		lds	r5,task_space+4
+		;sts	task_space+1,r6		;itemp3
+		;sts	task_space+1,r7		;itemp4
+		lds	r8,task_space+5
+		lds	r9,task_space+6
+		lds	r10,task_space+7
+		lds	r11,task_space+8
+		lds	r12,task_space+9
+		lds	r13,task_space+10
+		lds	r14,task_space+11
+		lds	r15,task_space+12
+		lds	r17,task_space+14
+		;sts	task_space+1,r18	;statush
+		;sts	task_space+1,r19	;status
+		;sts	task_space+1,r20	;itemp
+		;sts	task_space+1,r21	;itemp2
+		lds	r22,task_space+15
+		lds	r23,task_space+16
+		lds	r24,task_space+17
+		lds	r25,task_space+18
+		lds	r26,task_space+19
+		lds	r27,task_space+20
+		lds	r28,task_space+21
+		lds	r29,task_space+22
+		lds	r30,task_space+23
+		lds	r31,task_space+24
+		;on the stack:
+		;	SREG
+		;	PC of next operation
+		pop	temp
+		out	SREG,temp
+		lds	temp,task_space+13	;temp=r16
+		reti
+;
+
+;
+; switch to calc task (calulate all blocks)
+task_switch_to_calc:
+		sts	task_space,r0
+		sts	task_space+1,r1
+		;sts	task_space+1,r2		;zero
+		sts	task_space+2,r3
+		sts	task_space+3,r4
+		sts	task_space+4,r5
+		;sts	task_space+1,r6		;itemp3
+		;sts	task_space+1,r7		;itemp4
+		sts	task_space+5,r8
+		sts	task_space+6,r9
+		sts	task_space+7,r10
+		sts	task_space+8,r11
+		sts	task_space+9,r12
+		sts	task_space+10,r13
+		sts	task_space+11,r14
+		sts	task_space+12,r15
+		sts	task_space+13,r16
+		sts	task_space+14,r17
+		;sts	task_space+1,r18	;statush
+		;sts	task_space+1,r19	;status
+		;sts	task_space+1,r20	;itemp
+		;sts	task_space+1,r21	;itemp2
+		sts	task_space+15,r22
+		sts	task_space+16,r23
+		sts	task_space+17,r24
+		sts	task_space+18,r25
+		sts	task_space+19,r26
+		sts	task_space+20,r27
+		sts	task_space+21,r28
+		sts	task_space+22,r29
+		sts	task_space+23,r30
+		sts	task_space+24,r31
+		;on the stack:
+		;	SREG
+		;	PC of next operation
+		sei				;kind of reti, but we leave some info on the stack for
+		rjmp	task_calc		;switching back to 'main'
+;
+
+
+.dseg
+task_space:	.byte	25
+.cseg
+; #
+; ############ END OF MULTITASKING #######
+
 
 ; ############ D A T A ##############
 ; #
@@ -1282,8 +1411,8 @@ trims:			.byte	2	;pointer to trims data
 ; #
 .eseg
 .org	0
-eesig:		.db	0x55,0xaa	;signature
-		.db	VERSION		;eeprom variables version
+eesig:		.db	EE_SIG1,EE_SIG2	;signature
+		.db	EE_VERSION		;eeprom variables version
 last_model:	.db	1
 data_start:	.db	low(flash_data<<1)
 		.db	high(flash_data<<1)
