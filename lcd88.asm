@@ -31,6 +31,10 @@
 ;		- load last model on startup
 ;		- fixed another ugly bug in model_load
 ;		- added searching for model description in model_load
+; 2009.08.16	- added macros for eeprom red and write
+;		- store configuration from status register in eeprom
+;		- programmable output ppm polatisation
+;		- main block processing loop
 
 
 .nolist
@@ -59,6 +63,7 @@
 .equ	CHANNEL_ZERO=24		;channel with constant 0
 .equ	CHANNEL_ONE=25		;channel with 1
 .equ	CHANNEL_MONE=26		;channel with -1
+.equ	CHANNEL_USERMOD=27	;first channel that can be modified by user
 ;numbers
 .equ	L_ZERO=0
 .equ	L_ONE=0b0000010000000000	;1 in 6.10
@@ -92,7 +97,9 @@
 .equ	PPM_ON=5
 .equ	PPM_POL=6
 .equ	MODEL_CHANGED=7
-; status
+; statush
+.equ	MATH_OV=0		;overflow flag
+.equ	MATH_SIGN=1		;sign of result
 
 
 .def		zero=r2
@@ -100,17 +107,19 @@
 .def		temp4=r5
 .def		itemp3=r6
 .def		itemp4=r7
-;.def		t2fix=r8
-;.def		temp5=r9
-;.def		temp6=r10
-;.def		temp7=r11
-.def		temp=r16	;zwykly rejestr tymczasowy
-.def		temp2=r17	;drugi temp
+.def		mtemp1=r8	;temp tegisters used in math
+.def		mtemp2=r9
+.def		mtemp3=r10
+.def		mtemp4=r11
+.def		mtemp5=r12
+.def		mtemp6=r13
+.def		temp=r16	;simple temp tegister
+.def		temp2=r17	;second temp
 .def		statush=r18
 .def		status=r19
-.def		itemp=r20	;jw. ale do wykorzystania w przerwaniach
-.def		itemp2=r21	;drugi temp dla przerwañ
-.def		mscountl=r22	;licznik milisekund dla waitms
+.def		itemp=r20	;temp register, but used only in interrupts
+.def		itemp2=r21	;second interrupt temp
+.def		mscountl=r22	;miliseconds counted for waitms
 .def		mscounth=r23
 .def		WL=r24
 .def		WH=r25
@@ -134,6 +143,23 @@
 		ldi	temp2,low(@0)
 		rcall	waitms1
 		pop	temp2
+.endmacro
+
+;write byte to eeprom
+.macro		m_eeprom_write
+		ldi	XL,low(@0)
+		ldi	XH,high(@0)
+		rcall	eeprom_write
+.endmacro
+
+;read byte from eeprom
+.macro		m_eeprom_read
+		ldi	temp,high(@0)
+		out	EEARH,temp
+		ldi	temp,low(@0)
+		out	EEARL,temp
+		sbi	EECR,EERE
+		in	temp,EEDR
 .endmacro
 
 ;
@@ -203,7 +229,7 @@ reset:
 		
 		;initialize variables
 		clr	zero
-		ldi	status,(1<<ADC_FILTER)		;set default values for status register
+		;ldi	status,(1<<ADC_FILTER)		;set default values for status register
 		
 		;clear ram
 		ldi	XL,low(SRAM_START)
@@ -217,7 +243,7 @@ reset_1:
 		dec	YH
 		brne	reset_1
 		
-		;get some data from eeprom
+		;get some data from eeprom (initialize also status register)
 		rcall	eeprom_init
 
 		;initialize timers
@@ -241,7 +267,9 @@ reset_1:
 		sts	OCR1BH,temp
 		ldi	temp,low(PPM_SYNC)
 		sts	OCR1BL,temp
-		ldi	temp,(1<<COM1B1)+(1<<COM1B0)+(1<<WGM11)+(1<<WGM10)	;non inverting ppm, fast pwm with ctc on OCR1A
+		ldi	temp,(1<<COM1B1)+(1<<WGM11)+(1<<WGM10)	;inverting ppm, fast pwm with ctc on OCR1A
+		sbrs	status,PPM_POL
+		ori	temp,(1<<COM1B0)	;non inverting ppm
 		sts	TCCR1A,temp
 		ldi	temp,(1<<WGM13)+(1<<WGM12)+(1<<CS10)
 		sts	TCCR1B,temp
@@ -270,7 +298,10 @@ reset_1:
 		ldi	temp,(1<<ADEN)+(1<<ADIE)+(1<<ADPS2)+(1<<ADPS1)	;enable adc, enable interrupts, prescaler /64
 		sts	ADCSRA,temp
 		sts	adc_channel,zero
-		
+
+		;initialize math stack pointer
+		rcall	math_init
+
 		;enable interrupts
 		sei
 
@@ -423,13 +454,13 @@ eeprom_init:
 		brne	eeprom_init_1
 		
 		;read some values from eeprom
-		ldi	temp,high(ee_last_model)	;restore last used model
-		out	EEARH,temp
-		ldi	temp,low(ee_last_model)
-		out	EEARL,temp
-		sbi	EECR,EERE
-		in	temp,EEDR
+		m_eeprom_read	ee_last_model		;restore last used model
 		sts	cur_model,temp
+		
+		;default values for status register
+		m_eeprom_read	ee_status
+		andi	temp,(1<<ADC_FILTER)|(1<<ADC_FILTER4)|(1<<PPM_POL)	;mask only runtime bits bits
+		mov	status,temp
 		
 		ret
 eeprom_init_1:
@@ -450,21 +481,25 @@ eeprom_init_1:
 		rcall	eeprom_write
 		
 		;write first model as last used
-		ldi	XL,low(ee_last_model)
-		ldi	XH,high(ee_last_model)
 		ldi	temp,1
 		sts	cur_model,temp		;store also as current model
-		rcall	eeprom_write
+		m_eeprom_write	ee_last_model
 		
 		;initialize end of flash data position
 		ldi	temp,low(flash_data_end<<1)
-		ldi	XL,low(ee_data_pos)
-		ldi	XH,high(ee_data_pos)
-		rcall	eeprom_write
+		m_eeprom_write	ee_data_pos
 		adiw	XL,1
 		ldi	temp,high(flash_data_end<<1)
 		rcall	eeprom_write
 		
+		;status register
+		ldi	temp,(1<<ADC_FILTER)
+		mov	status,temp
+		m_eeprom_write	ee_status
+		
+		ldi	temp,0
+		m_eeprom_write	ee_statush
+
 		ret
 ;
 
@@ -707,7 +742,7 @@ find_debug_val:	.byte	2
 
 
 ;
-; task for processing all values
+; ######### task for processing all values ###############
 task_calc:
 		;copy input to output
 		ldi	XL,low(channels)
@@ -720,9 +755,108 @@ l1:
 		st	Z+,temp
 		dec	temp2
 		brne	l1
+		
+		;process block according to block processing order
+		lds	ZL,sequence	;get address
+		lds	ZH,sequence+1
+		
+		mov	temp,ZL		;check if address<>0
+		or	temp,ZH
+		breq	task_calc_e
+		
+		adiw	ZL,1		;get number of blocks to process (length of processing block-2)
+		lpm	temp,Z+
+		subi	temp,2
+		breq	task_calc_e	;just in case (block length=2, number of blocks=0)
 
+task_calc_1:	;main processing loop (Z points to block number, temp contains number of blocks to process)
+		push	temp
+		lpm	temp,Z+
+		push	ZL
+		push	ZH
+		
+		ldi	XL,low(blocks)	;calculate address to pointer stored in blocks table
+		ldi	XH,high(blocks)
+		add	XL,temp
+		adc	XH,zero
+		add	XL,temp
+		adc	XH,zero
+		
+		ld	ZL,X+		;get block address
+		ld	ZH,X
+		mov	temp,ZL		;check for 0
+		or	temp,ZH
+		breq	task_calc_99
+		
+		movw	WL,ZL		;save block address for future use
+		adiw	ZL,4		;get block type
+		lpm	temp,Z
+		
+		cpi	temp,1		;trim
+		breq	task_calc_add
+		cpi	temp,12		;add
+		breq	task_calc_add
+		cpi	temp,2		;reverse
+		breq	task_calc_mul
+		cpi	temp,4		;multiply
+		breq	task_calc_mul
+		cpi	temp,3		;limit
+		breq	task_calc_limit
+		cpi	temp,5		;digital input
+		breq	task_calc_digin
+		cpi	temp,6		;multiplexer
+		breq	task_calc_mux
+		cpi	temp,7		;limit detector
+		breq	task_calc_det
+		cpi	temp,8		;minimum
+		breq	task_calc_min
+		cpi	temp,9		;maximum
+		breq	task_calc_max
+		cpi	temp,10		;delta mixer
+		breq	task_calc_delta
+		cpi	temp,11		;substract
+		breq	task_calc_sub
+		cpi	temp,13		;compare
+		breq	task_calc_compare
+		cpi	temp,14		;absolute value
+		breq	task_calc_abs
+		rjmp	task_calc_99	;default = do nothing
+task_calc_99:	;end of main loop
+		pop	ZH
+		pop	ZL
+		pop	temp
+		dec	temp
+		brne	task_calc_1
+task_calc_e:
 		rjmp	task_switch_to_main	;end of this task
+task_calc_add:
+task_calc_mul:
+task_calc_limit:
+task_calc_digin:
+task_calc_mux:
+task_calc_det:
+task_calc_min:
+task_calc_max:
+task_calc_delta:
+task_calc_sub:
+task_calc_compare:
+task_calc_abs:
+		rjmp	task_calc_99
 ;
+
+;
+; get params to mtemp1... from block pointed in W
+task_calc_get_param:
+		movw	ZL,WL		;get number of inputs
+		ret
+;
+
+
+;
+; #####################  MATH ROUTINES  ###########################
+
+.include "math-6-10.asm"
+
 
 
 ; #####################  DEBUG ROUTINES ############################
@@ -1582,6 +1716,8 @@ eesig:		.db	EE_SIG1,EE_SIG2	;signature
 ee_last_model:	.db	1
 ee_data_pos:	.db	low(flash_data_end<<1)
 		.db	high(flash_data_end<<1)
+ee_status:	.db	0
+ee_statush:	.db	0
 
 ; #
 ; ################################################################

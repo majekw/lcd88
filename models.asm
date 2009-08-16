@@ -27,13 +27,15 @@
 ; 3 - limit			3	1	(in+min+max)
 ; 4 - multiplier		2	1	(2x in)		X=A*B
 ; 5 - digital input		1	1	(in)		kind of shootky gate: returns only -1,0,1
-; 6 - multiplexer		4	1	(3x in+control)
+; 6 - multiplexer		3	1	(2x in+control)
 ; 7 - limit detector		1	1	(in)		returns number to multiply by to stay in -1...1 range (if exceeded, else 1)
 ; 8 - min			2	1	(2x in)		X=min(A,B)
 ; 9 - max			2	1	(2x in)		X=max(A,B)
 ; 10 - delta			2	2	(2x in)		X=(A+B)/2, Y=(A-B)/2
 ; 11 - sub			2	1	(2x in)		X=A-B
 ; 12 - adder			2	1	(2x in)		X=A+B
+; 13 - compare			2	1	(2x in)		X=0 if A=B,X=-1 if A<B, X=1 if A>B
+; 14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
 
 ; specific blocks:
 ; 0 - block
@@ -43,7 +45,7 @@
 ;	description_id
 ;	block_type
 ;	inputs		(count)
-;	outputs
+;	outputs		(count)
 ;	input1		(channel)
 ;	input2
 ;	...
