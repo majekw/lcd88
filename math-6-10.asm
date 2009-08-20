@@ -9,7 +9,9 @@
 ;			math_swap
 ;			math_sign_calc
 ;			math_mul (not finished)
-
+; 2009.08.17	- math_dup
+;		- added cli/sei around storing math_sp to make it multitasking safe
+;		- finished math_mul
 
 
 ;
@@ -40,8 +42,10 @@ math_add:
 math_add_1:
 		st	Y+,mtemp1		;store result
 		st	Y+,mtemp2
+		cli
 		sts	math_sp,YL		;update stack pointer
 		sts	math_sp+1,YH
+		sei
 math_ret:
 		ret
 ;
@@ -88,6 +92,19 @@ math_swap:
 ; duplicate operand on the stack
 math_dup:
 		ret
+		lds	YL,math_sp		;get stack pointer
+		lds	YH,math_sp+1
+		adiw	YL,2			;must be multitasking safe
+		cli
+		sts	math_sp,YL
+		sts	math_sp,YH
+		sei
+		sbiw	YL,4
+		ld	mtemp1,Y
+		ldd	mtemp2,Y+1
+		std	Y+2,mtemp1
+		std	Y+3,mtemp2
+		ret
 ;
 
 
@@ -122,15 +139,74 @@ math_sign_calc_1:
 
 ;
 ; multiply two operands on the stack
+; 6.10*6.10=12.20 (last 10 bits we must discard)
+;                 A   B    (1 0)
+;              *  C   D    (3 2)
+;             -----------
+;                 B * D
+;             A * D
+;             B * C
+;     +   A * C
+;     -------------------
+;         3   2   1   x
+; then >>2 to get right result, so only 2 bits of mtemp3 are significant
 math_mul:
 		rcall	math_sign_calc		;prepare operands and calulate sign of result
 
 		lds	YL,math_sp		;get stack pointer
 		lds	YH,math_sp+1
 		sbiw	YL,4
+		
+		ld	mtemp1,Y	;B
+		ldd	mtemp2,Y+2	;D
+		mul	mtemp1,mtemp2	;B*D
+		mov	mtemp1,r1	;r0 can be discarded
+		
+		clr	mtemp3		;prepare mtemp3
+		ldd	mtemp4,Y+1	;A
+		mul	mtemp4,mtemp2	;A*D
+		mov	mtemp2,r1
+		add	mtemp1,r0
+		adc	mtemp2,zero
+		adc	mtemp3,zero
+		
+		ldd	mtemp4,Y+3	;C
+		ld	r0,Y		;B
+		mul	r0,mtemp4	;B*C
+		add	mtemp1,r0
+		adc	mtemp2,r1
+		adc	mtemp3,zero
+		
+		ldd	r0,Y+1		;A
+		mul	mtemp4,r0	;A*C
+		add	mtemp2,r0
+		adc	mtemp3,r1
+		
+		lsr	mtemp3		;shift right by 2 bits result to fit in 16 bit format
+		ror	mtemp2
+		ror	mtemp1
+		lsr	mtemp3
+		ror	mtemp2
+		ror	mtemp1
+		
+		tst	mtemp3		;overflow if something left in mtemp3
+		brne	math_mul_1
+		ori	statush,(1<<MATH_OV)
+math_mul_1:
+		sbrc	mtemp2,7	;if MSB is 1, there is also overflow (this is place for sign)
+		ori	statush,(1<<MATH_OV)
+		
+		st	Y+,mtemp1	;store result
+		st	Y+,mtemp2
+		
+		cli			;update stack pointer
+		sts	math_sp,YL
+		sts	math_sp+1,YH
+		sei
+		
+		sbrc	statush,MATH_SIGN	;restore sign
+		rcall	math_neg
 
-
-math_mul_x:
 		ret
 ;
 

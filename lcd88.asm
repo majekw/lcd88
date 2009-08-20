@@ -35,6 +35,9 @@
 ;		- store configuration from status register in eeprom
 ;		- programmable output ppm polatisation
 ;		- main block processing loop
+;		- started math in separate include
+; 2009.08.17	- added storing/restoring math status bits from statush in task switching
+;		- continue making math
 
 
 .nolist
@@ -1583,6 +1586,13 @@ task_switch_to_main:
 		lds	r29,task_space+22
 		lds	r30,task_space+23
 		lds	r31,task_space+24
+		
+		;restore math status in statush register
+		lds	temp,task_space+25
+		andi	temp,(1<<MATH_OV)|(1<<MATH_SIGN)	;get only important bits
+		andi	statush,~((1<<MATH_OV)|(1<<MATH_SIGN))	;destroy these bits in result
+		or	statush,temp			;restore bits
+		
 		;on the stack:
 		;	SREG
 		;	PC of next operation
@@ -1627,6 +1637,7 @@ task_switch_to_calc:
 		sts	task_space+22,r29
 		sts	task_space+23,r30
 		sts	task_space+24,r31
+		sts	task_space+25,statush	;there is a need to save math status bits
 		;on the stack:
 		;	SREG
 		;	PC of next operation
@@ -1636,7 +1647,7 @@ task_switch_to_calc:
 
 
 .dseg
-task_space:	.byte	25
+task_space:	.byte	26
 .cseg
 ; #
 ; ############################################################
