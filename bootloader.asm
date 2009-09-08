@@ -44,16 +44,6 @@
 .equ	xmodem_CAN=0x18
 .equ	xmodem_C=0x45
 
-.equ	mieszacz=79
-.equ	poczatek=0x39
-
-.macro		outf
-		sts	@0+0x20,@1
-.endmacro
-
-.macro		inf
-		lds	@0,@1+0x20
-.endmacro
 
 .cseg
 .org	0

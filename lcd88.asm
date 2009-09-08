@@ -759,6 +759,8 @@ l1:
 		dec	temp2
 		brne	l1
 		
+		rjmp	task_calc_e
+		
 		;process block according to block processing order
 		lds	ZL,sequence	;get address
 		lds	ZH,sequence+1
