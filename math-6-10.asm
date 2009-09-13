@@ -15,7 +15,8 @@
 ; 2009.09.13	- math_get_sp
 ;		- math_set_sp
 ;		- subroutines updated to use math_set/get_sp
-
+;		- fixed math_calc_sign (wrong byte get to sign calculation)
+;		- fixed math_add (typo, but important)
 
 ;
 ; initialize math stack pointer
@@ -59,7 +60,7 @@ math_add:
 		ldd	mtemp3,Y+2
 		ldd	mtemp4,Y+3
 		
-		add	mtemp1,mtemp2		;add
+		add	mtemp1,mtemp3		;add
 		adc	mtemp2,mtemp4
 		brcc	math_add_1		;check for overflow
 		ori	statush,(1<<MATH_OV)
@@ -131,7 +132,7 @@ math_sign_calc:
 		sbiw	YL,2
 		;check sign
 		andi	statush,~(1<<MATH_SIGN)	;clear result sign
-		ld	mtemp1,Y
+		ldd	mtemp1,Y+1
 		sbrs	mtemp1,7	;check for sign
 		rjmp	math_sign_calc_1
 		ori	statush,(1<<MATH_SIGN)	;prepare sign
@@ -141,7 +142,7 @@ math_sign_calc_1:
 
 		rcall	math_get_sp		;get stack pointer
 		sbiw	YL,2
-		ld	mtemp1,Y
+		ldd	mtemp1,Y+1
 		sbrs	mtemp1,7	;check for sign
 		ret
 		ldi	temp,(1<<MATH_SIGN)
