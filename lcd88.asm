@@ -31,13 +31,16 @@
 ;		- load last model on startup
 ;		- fixed another ugly bug in model_load
 ;		- added searching for model description in model_load
-; 2009.08.16	- added macros for eeprom red and write
+; 2009.08.16	- added macros for eeprom read and write
 ;		- store configuration from status register in eeprom
-;		- programmable output ppm polatisation
+;		- programmable output ppm polarisation
 ;		- main block processing loop
 ;		- started math in separate include
 ; 2009.08.17	- added storing/restoring math status bits from statush in task switching
 ;		- continue making math
+; 2009.09.13	- some math work
+;		- made some comments
+;
 
 
 .nolist
@@ -69,7 +72,7 @@
 .equ	CHANNEL_USERMOD=27	;first channel that can be modified by user
 ;numbers
 .equ	L_ZERO=0
-.equ	L_ONE=0b0000010000000000	;1 in 6.10
+.equ	L_ONE= 0b0000010000000000	;1 in 6.10
 .equ	L_MONE=0b1111110000000000	;-1 in 6.10
 ;keyboard
 .equ	KBD_DELAY=15		;debounce time for keyboard (*2ms)
@@ -313,6 +316,8 @@ reset_1:
 
 		rcall	trims_find		;find trim data for sticks
 		
+		ldi	temp,2
+		sts	cur_model,temp
 		rcall	model_load		;load last used model
 
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
@@ -336,6 +341,8 @@ main_loop:
 		rcall	status_debug
 		waitms	5
 		rcall	ppm_debug
+		waitms	5
+		rcall	out_debug
 .endif
 
 
@@ -747,22 +754,22 @@ find_debug_val:	.byte	2
 ;
 ; ######### task for processing all values ###############
 task_calc:
-		;copy input to output
-		ldi	XL,low(channels)
-		ldi	XH,high(channels)
-		ldi	ZL,low(channels+32)
-		ldi	ZH,high(channels+32)
-		ldi	temp2,16
-l1:
-		ld	temp,X+
-		st	Z+,temp
-		dec	temp2
-		brne	l1
-		
-		rjmp	task_calc_e
+;		;copy input to output
+;		ldi	XL,low(channels)
+;		ldi	XH,high(channels)
+;		ldi	ZL,low(channels+32)
+;		ldi	ZH,high(channels+32)
+;		ldi	temp2,16
+;l1:
+;		ld	temp,X+
+;		st	Z+,temp
+;		dec	temp2
+;		brne	l1
+;		
+;		rjmp	task_calc_e
 		
 		;process block according to block processing order
-		lds	ZL,sequence	;get address
+		lds	ZL,sequence	;get address of block containing processing sequence
 		lds	ZH,sequence+1
 		
 		mov	temp,ZL		;check if address<>0
@@ -773,14 +780,15 @@ l1:
 		lpm	temp,Z+
 		subi	temp,2
 		breq	task_calc_e	;just in case (block length=2, number of blocks=0)
+		brcs	task_calc_e
 
 task_calc_1:	;main processing loop (Z points to block number, temp contains number of blocks to process)
 		push	temp
-		lpm	temp,Z+
+		lpm	temp,Z+		;get block number for processing
 		push	ZL
 		push	ZH
 		
-		ldi	XL,low(blocks)	;calculate address to pointer stored in blocks table
+		ldi	XL,low(blocks)	;calculate address of pointer stored in blocks table
 		ldi	XH,high(blocks)
 		add	XL,temp
 		adc	XH,zero
@@ -825,6 +833,8 @@ task_calc_1:	;main processing loop (Z points to block number, temp contains numb
 		breq	task_calc_compare
 		cpi	temp,14		;absolute value
 		breq	task_calc_abs
+		cpi	temp,15
+		breq	task_calc_neg
 		rjmp	task_calc_99	;default = do nothing
 task_calc_99:	;end of main loop
 		pop	ZH
@@ -834,8 +844,57 @@ task_calc_99:	;end of main loop
 		brne	task_calc_1
 task_calc_e:
 		rjmp	task_switch_to_main	;end of this task
+		
+		;calculating... W=address of block for processing
+; 0 - block
+;	model_id+(deleted<<5)+(0<<6)
+;	length = block specific
+;	block_id
+;	description_id
+;	block_type
+;	inputs		(count)
+;	outputs		(count)
+;	input1		(channel)
+;	input2
+;	...
+;	output1
+;	output2
+;	...
+
 task_calc_add:
+		movw	ZL,WL
+		adiw	ZL,7
+		lpm	temp,Z+
+		rcall	math_push_channel
+		lpm	temp,Z+
+		rcall	math_push_channel
+		rcall	math_add
+		lpm	temp,Z
+		rcall	math_pop_channel
+		rjmp	task_calc_99
+
 task_calc_mul:
+		movw	ZL,WL
+		adiw	ZL,7
+		lpm	temp,Z+
+		rcall	math_push_channel
+		lpm	temp,Z+
+		rcall	math_push_channel
+		rcall	math_mul
+		lpm	temp,Z
+		rcall	math_pop_channel
+		rjmp	task_calc_99
+
+task_calc_neg:
+		movw	ZL,WL
+		adiw	ZL,7
+		lpm	temp,Z+
+		rcall	math_push_channel
+		rcall	math_neg
+		lpm	temp,Z
+		rcall	math_pop_channel
+		rjmp	task_calc_99
+
 task_calc_limit:
 task_calc_digin:
 task_calc_mux:
@@ -849,18 +908,53 @@ task_calc_abs:
 		rjmp	task_calc_99
 ;
 
-;
-; get params to mtemp1... from block pointed in W
-task_calc_get_param:
-		movw	ZL,WL		;get number of inputs
-		ret
-;
-
 
 ;
 ; #####################  MATH ROUTINES  ###########################
 
+;generic math
 .include "math-6-10.asm"
+
+;special cases
+
+;
+; push channel (temp) value on the stack
+math_push_channel:
+		ldi	XL,low(channels)
+		ldi	XH,high(channels)
+		add	XL,temp
+		adc	XH,zero
+		add	XL,temp
+		adc	XH,zero
+		rcall	math_get_sp
+		adiw	YL,2
+		rcall	math_set_sp
+		sbiw	YL,2
+		ld	temp,X+
+		st	Y+,temp
+		ld	temp,X+
+		st	Y+,temp
+		ret
+;
+
+;
+; pop channel (temp) from the stack
+math_pop_channel:
+		ldi	XL,low(channels)
+		ldi	XH,high(channels)
+		add	XL,temp
+		adc	XH,zero
+		add	XL,temp
+		adc	XH,zero
+		rcall	math_get_sp
+		sbiw	YL,2
+		ld	temp,Y
+		st	X+,temp
+		ldd	temp,Y+1
+		st	X+,temp
+		rcall	math_set_sp
+		ret
+;
 
 
 
@@ -869,7 +963,7 @@ task_calc_get_param:
 ; # wyswietla wartosci z bajtow klawiatury
 .ifdef DEBUG
 kbd_debug:
-		m_lcd_text_pos	0,5
+		m_lcd_text_pos	0,4
 		ldi	XL,low(key_0)
 		ldi	XH,high(key_0)
 		ldi	temp2,6
@@ -892,7 +986,7 @@ kbd_debug:
 ;
 ;
 adc_debug:
-		m_lcd_text_pos	0,7
+		m_lcd_text_pos	0,5
 		ldi	XL,low(adc_buffer)
 		ldi	XH,high(adc_buffer)
 		ldi	temp2,16
@@ -903,7 +997,7 @@ adc_debug:
 ;
 ;
 ppm_debug:
-		m_lcd_text_pos	0,11
+		m_lcd_text_pos	0,8
 		ldi	XL,low(ppm_debug_val)
 		ldi	XH,high(ppm_debug_val)
 		ldi	temp2,2
@@ -914,7 +1008,7 @@ ppm_debug:
 ;
 ;
 status_debug:
-		m_lcd_text_pos	0,10
+		m_lcd_text_pos	0,7
 		mov	temp,status
 		swap	temp
 		rcall	tohex
@@ -931,7 +1025,7 @@ status_debug:
 ;
 ;
 find_debug:
-		m_lcd_text_pos	0,12
+		m_lcd_text_pos	0,9
 		ldi	XL,low(find_debug_val)
 		ldi	XH,high(find_debug_val)
 		ldi	temp2,2
@@ -942,6 +1036,18 @@ find_debug:
 		rcall	mem_debug
 		ret
 ;
+
+;
+;
+out_debug:
+		m_lcd_text_pos	0,10
+		ldi	XL,low(channels+32)
+		ldi	XH,high(channels+32)
+		ldi	temp2,64
+		rcall	mem_debug
+		ret
+;
+
 
 
 ; X - memory address
