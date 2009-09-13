@@ -12,6 +12,9 @@
 ; 2009.08.17	- math_dup
 ;		- added cli/sei around storing math_sp to make it multitasking safe
 ;		- finished math_mul
+; 2009.09.13	- math_get_sp
+;		- math_set_sp
+;		- subroutines updated to use math_set/get_sp
 
 
 ;
@@ -24,17 +27,38 @@ math_init:
 		ret
 ;
 
+;
+; get stack pointer (to Y)
+math_get_sp:
+		lds	YL,math_sp		;get stack pointer
+		lds	YH,math_sp+1
+		ret
+;
+
+
+;
+; set stack pointer (to Y)
+math_set_sp:
+		cli
+		sts	math_sp,YL		;update stack pointer
+		sts	math_sp+1,YH
+		sei
+		ret
+;
+
 
 ;
 ; add two operands on the stack
 math_add:
-		lds	YL,math_sp		;get stack pointer
-		lds	YH,math_sp+1
-		sbiw	YL,4
+		rcall	math_get_sp		;get stack pointer
+
+		sbiw	YL,4			;rewind by 4 bytes (2 params)
+		
 		ld	mtemp1,Y		;get parameters
 		ldd	mtemp2,Y+1
 		ldd	mtemp3,Y+2
 		ldd	mtemp4,Y+3
+		
 		add	mtemp1,mtemp2		;add
 		adc	mtemp2,mtemp4
 		brcc	math_add_1		;check for overflow
@@ -42,10 +66,8 @@ math_add:
 math_add_1:
 		st	Y+,mtemp1		;store result
 		st	Y+,mtemp2
-		cli
-		sts	math_sp,YL		;update stack pointer
-		sts	math_sp+1,YH
-		sei
+
+		rcall	math_set_sp		;update stack pointer
 math_ret:
 		ret
 ;
@@ -54,8 +76,8 @@ math_ret:
 ;
 ; negate operand on the stack
 math_neg:
-		lds	YL,math_sp		;get stack pointer
-		lds	YH,math_sp+1
+		rcall	math_get_sp		;get stack pointer
+
 		sbiw	YL,2			;rewind by 2 bytes (1 param)
 		ld	mtemp1,Y		;get parameter
 		ldd	mtemp2,Y+1
@@ -74,8 +96,7 @@ math_neg:
 ;
 ; swap operand on the stack
 math_swap:
-		lds	YL,math_sp		;get stack pointer
-		lds	YH,math_sp+1
+		rcall	math_get_sp		;get stack pointer
 		sbiw	YL,4
 		ld	mtemp1,Y
 		ldd	mtemp2,Y+1
@@ -91,14 +112,9 @@ math_swap:
 ;
 ; duplicate operand on the stack
 math_dup:
-		ret
-		lds	YL,math_sp		;get stack pointer
-		lds	YH,math_sp+1
-		adiw	YL,2			;must be multitasking safe
-		cli
-		sts	math_sp,YL
-		sts	math_sp,YH
-		sei
+		rcall	math_get_sp		;get stack pointer
+		adiw	YL,2			;must be multitasking safe, so update stack pointer at beginning
+		rcall	math_set_sp
 		sbiw	YL,4
 		ld	mtemp1,Y
 		ldd	mtemp2,Y+1
@@ -111,8 +127,7 @@ math_dup:
 ;
 ; check sign of result in multiply and division, swaps operand on the stack!
 math_sign_calc:
-		lds	YL,math_sp		;get stack pointer
-		lds	YH,math_sp+1
+		rcall	math_get_sp		;get stack pointer
 		sbiw	YL,2
 		;check sign
 		andi	statush,~(1<<MATH_SIGN)	;clear result sign
@@ -124,8 +139,7 @@ math_sign_calc:
 math_sign_calc_1:
 		rcall	math_swap		;swap operand on the stack
 
-		lds	YL,math_sp		;get stack pointer
-		lds	YH,math_sp+1
+		rcall	math_get_sp		;get stack pointer
 		sbiw	YL,2
 		ld	mtemp1,Y
 		sbrs	mtemp1,7	;check for sign
@@ -153,8 +167,7 @@ math_sign_calc_1:
 math_mul:
 		rcall	math_sign_calc		;prepare operands and calulate sign of result
 
-		lds	YL,math_sp		;get stack pointer
-		lds	YH,math_sp+1
+		rcall	math_get_sp		;get stack pointer
 		sbiw	YL,4
 		
 		ld	mtemp1,Y	;B
@@ -199,10 +212,7 @@ math_mul_1:
 		st	Y+,mtemp1	;store result
 		st	Y+,mtemp2
 		
-		cli			;update stack pointer
-		sts	math_sp,YL
-		sts	math_sp+1,YH
-		sei
+		rcall	math_set_sp		;update stack pointer
 		
 		sbrc	statush,MATH_SIGN	;restore sign
 		rcall	math_neg
