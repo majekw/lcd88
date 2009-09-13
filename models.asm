@@ -36,6 +36,7 @@
 ; 12 - adder			2	1	(2x in)		X=A+B
 ; 13 - compare			2	1	(2x in)		X=0 if A=B,X=-1 if A<B, X=1 if A>B
 ; 14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
+; 15 - neg			1	1	(in)		X=-A
 
 ; specific blocks:
 ; 0 - block
@@ -147,8 +148,8 @@
 ;                                             \            |
 ; ch1 --trim--ch37--reverse--ch38--mul--ch39--add---out1   |
 ;       ch28         ch30          ch32   \                |
-;                                          -mul--ch40------/
-;                                           ch26
+;                                          -neg--ch40------/
+;                          
 ; ch27=0	ch28=0
 ; ch29=1	ch30=1
 ; ch31=0.5	ch32=0.5
@@ -169,6 +170,7 @@
 		.db	model+(0<<6),10,6,0,4,2,1,38,32,39	;mul for ch1
 		.db	model+(0<<6),10,7,0,12,2,1,36,40,16	;add for ch0
 		.db	model+(0<<6),10,8,0,12,2,1,36,39,17	;add for ch1
-		.db	model+(0<<6),10,9,0,4,2,1,39,26,40	;mul for inverse ch1
+		.db	model+(0<<6),10,9,0,15,1,1,39,40,0	;neg for inverse ch1
 		;decriptions+block processing order
-		.db	model+(3<<6),13,0,"Delta 2CH",0,model+(1<<6),11,1,2,3,4,5,6,8,9,7
+		.db	model+(3<<6),14,0,"Delta 2CH",0,0
+		.db	model+(1<<6),12,1,2,3,4,5,6,8,9,7,0
