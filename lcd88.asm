@@ -40,7 +40,7 @@
 ;		- continue making math
 ; 2009.09.13	- some math work
 ;		- made some comments
-;
+;		- drawing output channel bars
 
 
 .nolist
@@ -106,7 +106,7 @@
 ; statush
 .equ	MATH_OV=0		;overflow flag
 .equ	MATH_SIGN=1		;sign of result
-
+.equ	BAR_OV=2		;needed for showing bars
 
 .def		zero=r2
 .def		temp3=r4
@@ -343,8 +343,10 @@ main_loop:
 		rcall	ppm_debug
 		waitms	5
 		rcall	out_debug
+		waitms	5
 .endif
 
+		rcall	show_out_bars
 
 		rjmp	main_loop
 
@@ -357,6 +359,85 @@ main_loop:
 ; ############    SUBROUTINES    #####################################
 ; ####################################################################
 ; #
+
+
+;
+; draw bars of output channels
+.equ		OUT_BARS_X=111
+.equ		OUT_BARS_Y=8
+.equ		OUT_BARS_WIDTH=6
+.equ		OUT_BARS_SPACE=2
+show_out_bars:
+		ldi	temp2,8		;8 channels
+show_out_bars_1:
+		push	temp2
+		
+		ldi	XL,low(channels+32-2)	;start of output channels memory
+		ldi	XH,high(channels+32-2)
+		add	XL,temp2
+		adc	XH,zero
+		add	XL,temp2
+		adc	XH,zero
+		
+		ld	temp,X+	;get channel value
+		ld	temp2,X
+		
+		andi	statush,~(1<<BAR_OV)	;reset overflow
+		sbci	temp2,-4	;+4
+		brpl	show_out_bars_2	;still minus?
+		ori	statush,(1<<BAR_OV)	;set overflow
+		clr	temp		;clear argument
+		clr	temp2
+show_out_bars_2:
+		add	temp,temp	;x2
+		adc	temp2,temp2
+		cpi	temp2,17	;check upper limit
+		brcs	show_out_bars_3
+		ori	statush,(1<<BAR_OV)
+		ldi	temp2,16
+show_out_bars_3:			;temp2 - value (0..16)
+		pop	temp3
+		push	temp3
+		
+		ldi	temp,OUT_BARS_X-OUT_BARS_WIDTH-OUT_BARS_SPACE
+show_out_bars_4:
+		sbci	temp,-(OUT_BARS_WIDTH+OUT_BARS_SPACE)
+		dec	temp3
+		brne	show_out_bars_4
+		
+		sts	lcd_arg1,temp	;x
+		ldi	temp,OUT_BARS_Y	;y
+		sts	lcd_arg2,temp
+		ldi	temp,OUT_BARS_WIDTH	;dx
+		sts	lcd_arg3,temp
+		ldi	temp,17		;dy
+		sub	temp,temp2
+		sts	lcd_arg4,temp
+		m_lcd_set_fg	COLOR_WHITE
+		push	temp2
+		rcall	lcd_fill_rect
+		pop	temp2
+		
+		m_lcd_set_fg	COLOR_DKGREEN
+		inc	temp2
+		sts	lcd_arg4,temp2
+		dec	temp2
+		ldi	temp,17
+		sub	temp,temp2
+		ldi	temp2,OUT_BARS_Y
+		add	temp,temp2
+		sts	lcd_arg2,temp
+		rcall	lcd_fill_rect
+
+		pop	temp2
+		dec	temp2
+		breq	show_out_bars_5
+		rjmp	show_out_bars_1
+show_out_bars_5:
+		m_lcd_set_fg	COLOR_BLACK
+		ret
+;
+
 
 ;
 ; init lcd screen and draw something on it
