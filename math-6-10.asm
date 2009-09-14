@@ -17,6 +17,11 @@
 ;		- subroutines updated to use math_set/get_sp
 ;		- fixed math_calc_sign (wrong byte get to sign calculation)
 ;		- fixed math_add (typo, but important)
+;		- math_compare
+;		- math_sub
+;		- math_min
+;		- math_max
+
 
 ;
 ; initialize math stack pointer
@@ -220,6 +225,59 @@ math_mul_1:
 
 		ret
 ;
+
+
+;
+; compare arguments on the stack
+;	return carry if first argument is less than second
+math_compare:
+		rcall	math_get_sp
+		sbiw	YL,4
+		ld	mtemp1,Y
+		ldd	mtemp2,Y+1
+		ldd	mtemp3,Y+2
+		ldd	mtemp4,Y+3
+		sub	mtemp1,mtemp3
+		sbc	mtemp2,mtemp4
+		ret
+;
+
+;
+; substract
+math_sub:
+		rcall	math_compare
+		st	Y,mtemp1
+		std	Y+1,mtemp2
+		adiw	YL,2
+		rcall	math_set_sp
+		ret
+;
+
+
+;
+; minimum
+math_min:
+		rcall	math_compare
+		brcs	math_min_1
+		rcall	math_swap
+math_min_1:
+		adiw	YL,2
+		rcall	math_set_sp
+		ret
+;
+
+;
+; maximum
+math_max:
+		rcall	math_compare
+		brcc	math_max_1
+		rcall	math_swap
+math_max_1:
+		adiw	YL,2
+		rcall	math_set_sp
+		ret
+;
+
 
 ;
 ; math stack
