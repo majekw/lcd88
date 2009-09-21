@@ -41,6 +41,9 @@
 ; 2009.09.13	- some math work
 ;		- made some comments
 ;		- drawing output channel bars
+; 2009.09.21	- some comments
+;		- introduce CHANNEL_OUT constant - it's preparation to make some shift in channels
+;		  to make room for extender
 
 
 .nolist
@@ -66,6 +69,7 @@
 .equ	PPM_MIN=ZEGAR*8/10000	;0.8ms - absolute minimum
 .equ	PPM_MAX=ZEGAR*22/10000	;2.2ms - absolute maximum
 .equ	MODEL_DELETED=5		;5th bit in header means that block is deleted
+.equ	CHANNEL_OUT=16		;first output channel
 .equ	CHANNEL_ZERO=24		;channel with constant 0
 .equ	CHANNEL_ONE=25		;channel with 1
 .equ	CHANNEL_MONE=26		;channel with -1
@@ -107,6 +111,7 @@
 .equ	MATH_OV=0		;overflow flag
 .equ	MATH_SIGN=1		;sign of result
 .equ	BAR_OV=2		;needed for showing bars
+.equ	EXTENDER=3		;extender present?
 
 .def		zero=r2
 .def		temp3=r4
@@ -368,13 +373,13 @@ main_loop:
 .equ		OUT_BARS_WIDTH=6
 .equ		OUT_BARS_SPACE=2
 show_out_bars:
-		ldi	temp2,8		;8 channels
+		ldi	temp2,PPM_CHANNELS	;8 channels
 show_out_bars_1:
 		push	temp2
 		
-		ldi	XL,low(channels+32-2)	;start of output channels memory
-		ldi	XH,high(channels+32-2)
-		add	XL,temp2
+		ldi	XL,low(channels+CHANNEL_OUT*2-2) ;start of output channels memory
+		ldi	XH,high(channels+CHANNEL_OUT*2-2)
+		add	XL,temp2		;add channel number*2
 		adc	XH,zero
 		add	XL,temp2
 		adc	XH,zero
@@ -767,7 +772,7 @@ model_load_5:	;model name
 		adiw	ZL,2			;check for description id=0
 		lpm	temp,Z
 		tst	temp
-		brne	model_load_5_2		;workaround na model_load_e (too far)
+		brne	model_load_5_2		;workaround for model_load_e (too far)
 		movw	ZL,WL
 		lpm	temp,Z
 		sbrc	temp,MODEL_DELETED
@@ -1122,8 +1127,8 @@ find_debug:
 ;
 out_debug:
 		m_lcd_text_pos	0,10
-		ldi	XL,low(channels+32)
-		ldi	XH,high(channels+32)
+		ldi	XL,low(channels+CHANNEL_OUT*2)
+		ldi	XH,high(channels+CHANNEL_OUT*2)
 		ldi	temp2,64
 		rcall	mem_debug
 		ret
@@ -1176,7 +1181,7 @@ t2cm:
 		in	itemp,SREG
 		push	itemp
 
-		inc	mscountl		;licznik milisekund dla mswait
+		inc	mscountl		;miliseconds timer for mswait
 		brne	t2cm_1
 		inc	mscounth
 t2cm_1:		
@@ -1185,7 +1190,7 @@ t2cm_1:
 		sts	count20ms,itemp
 		cpi	itemp,PPM_INTERVAL
 		brcs	t2cm_3
-		;we are here every 20ms
+		;we are here every 20ms or PPM_INTERVAL
 		sts	count20ms,zero		;set counter to 0
 		
 		sbrs	status,ADC_ON		;check if ADC should be on
@@ -1532,9 +1537,9 @@ adcc_10:
 
 		ldi	XL,low(out_buffer)	;copy output channels to ppm buffer
 		ldi	XH,high(out_buffer)
-		ldi	ZL,low(channels+32)	;output channels are 16-23
-		ldi	ZH,high(channels+32)
-		ldi	itemp2,16
+		ldi	ZL,low(channels+CHANNEL_OUT*2)	;output channels are 16-23
+		ldi	ZH,high(channels+CHANNEL_OUT*2)
+		ldi	itemp2,PPM_CHANNELS*2
 adcc_11:
 		ld	itemp,Z+
 		st	X+,itemp
@@ -1596,7 +1601,7 @@ t1cm_e:
 		reti
 .dseg
 ppm_channel:	.byte	1
-out_buffer:	.byte	8*2	;buffer for generating ppm
+out_buffer:	.byte	PPM_CHANNELS*2	;buffer for generating ppm
 .cseg
 
 
