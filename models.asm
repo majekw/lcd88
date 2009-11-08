@@ -174,6 +174,7 @@
 		.db	model+(0<<6),10,7,0,12,2,1,36,40,16	;add for ch0
 		.db	model+(0<<6),10,8,0,12,2,1,36,39,17	;add for ch1
 		.db	model+(0<<6),10,9,0,15,1,1,39,40,0	;neg for inverse ch1
-		;decriptions+block processing order
+		;decription
 		.db	model+(3<<6),14,0,"Delta 2CH",0,0
+		;block processing order
 		.db	model+(1<<6),12,1,2,3,4,5,6,8,9,7,0
