@@ -7,6 +7,9 @@
 ; 24 - 0
 ; 25 - 1
 ; 26 - -1
+; 27 - buzzer
+; 28-31 - dedicated channels for trims for sticks 1-4 (updated automatically from extender)
+
 ;
 ; containter definition:
 ; 1 - model id + deleted + content type

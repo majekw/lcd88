@@ -321,7 +321,7 @@ reset_1:
 
 		rcall	trims_find		;find trim data for sticks
 		
-		ldi	temp,2
+		ldi	temp,1
 		sts	cur_model,temp
 		rcall	model_load		;load last used model
 
@@ -336,6 +336,31 @@ reset_1:
 
 
 		; #################### MAIN LOOP #####################
+
+; MENU STRUCTURE:
+; - trim
+; - reverse
+; - model
+;   - save
+;   - load
+;   - copy
+;   - edit
+;   - delete
+; - extra
+;   - stoper
+; - setup
+;   - info
+;   - debug
+;   - backup
+;   - restore
+;   - calibrate sticks
+;   - clean-up memory
+;   - output polarization
+;   - adc filtering
+;   - send FMSPIC frames via rs
+;   - pwm duty
+;
+
 main_loop:
 
 .ifdef DEBUG
@@ -556,6 +581,7 @@ eeprom_init:
 		;default values for status register
 		m_eeprom_read	ee_status
 		andi	temp,(1<<ADC_FILTER)|(1<<ADC_FILTER4)|(1<<PPM_POL)	;mask only runtime bits bits
+		ori	temp,(1<<PPM_POL)	;hack
 		mov	status,temp
 		
 		ret
@@ -589,7 +615,7 @@ eeprom_init_1:
 		rcall	eeprom_write
 		
 		;status register
-		ldi	temp,(1<<ADC_FILTER)
+		ldi	temp,(1<<ADC_FILTER)|(1<<PPM_POL)
 		mov	status,temp
 		m_eeprom_write	ee_status
 		
