@@ -47,6 +47,9 @@
 ; 2009.11.11	- rename flash_data to storage
 ;		- some cleaning in models.asm to fit in new channel order
 ;		- use storage_end from eeprom instead of hardcoded value
+;		- finished bar drawing (make bar red if overflow)
+;		- fixed calculation of x coordinate in bar drawing
+;		- more comments in bar graph
 
 
 .nolist
@@ -395,16 +398,17 @@ main_loop:
 
 
 ;
-; draw bars of output channels
+; draw bars of output channels (height is fixed to 16)
 .equ		OUT_BARS_X=111
 .equ		OUT_BARS_Y=8
 .equ		OUT_BARS_WIDTH=6
-.equ		OUT_BARS_SPACE=2
+.equ		OUT_BARS_SPACE=1
 show_out_bars:
 		ldi	temp2,PPM_CHANNELS	;8 channels
 show_out_bars_1:
 		push	temp2
 		
+		;recalculate channel value to bar height
 		ldi	XL,low(channels+CHANNEL_OUT*2-2) ;start of output channels memory
 		ldi	XH,high(channels+CHANNEL_OUT*2-2)
 		add	XL,temp2		;add channel number*2
@@ -429,45 +433,54 @@ show_out_bars_2:
 		ori	statush,(1<<BAR_OV)
 		ldi	temp2,16
 show_out_bars_3:			;temp2 - value (0..16)
-		pop	temp3
+		;caclulate X coordinate of bar
+		pop	temp3		;get channel number to temp3
 		push	temp3
 		
 		ldi	temp,OUT_BARS_X-OUT_BARS_WIDTH-OUT_BARS_SPACE
 show_out_bars_4:
+		clc
 		sbci	temp,-(OUT_BARS_WIDTH+OUT_BARS_SPACE)
 		dec	temp3
 		brne	show_out_bars_4
 		
+		;set dimensions of bar
 		sts	lcd_arg1,temp	;x
 		ldi	temp,OUT_BARS_Y	;y
 		sts	lcd_arg2,temp
 		ldi	temp,OUT_BARS_WIDTH	;dx
 		sts	lcd_arg3,temp
-		ldi	temp,17		;dy
+		ldi	temp,17		;dy - calulate height of background bar
 		sub	temp,temp2
 		sts	lcd_arg4,temp
 		m_lcd_set_fg	COLOR_WHITE
 		push	temp2
-		rcall	lcd_fill_rect
+		rcall	lcd_fill_rect	;draw upper part of bar (white background)
 		pop	temp2
 		
 		m_lcd_set_fg	COLOR_DKGREEN
-		inc	temp2
+		inc	temp2		;dy - bar should have at least one pixel of height
 		sts	lcd_arg4,temp2
-		dec	temp2
+		
+		dec	temp2		;y
 		ldi	temp,17
 		sub	temp,temp2
 		ldi	temp2,OUT_BARS_Y
 		add	temp,temp2
 		sts	lcd_arg2,temp
-		rcall	lcd_fill_rect
+		
+		sbrs	statush,BAR_OV	;if overflow, set color to red
+		rjmp	show_out_bars_6
+		m_lcd_set_fg	COLOR_DKRED
+show_out_bars_6:
+		rcall	lcd_fill_rect	;draw lower part of bar
 
 		pop	temp2
 		dec	temp2
 		breq	show_out_bars_5
 		rjmp	show_out_bars_1
 show_out_bars_5:
-		m_lcd_set_fg	COLOR_BLACK
+		m_lcd_set_fg	COLOR_BLACK	;restore default color
 		ret
 ;
 
