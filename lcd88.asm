@@ -44,6 +44,9 @@
 ; 2009.09.21	- some comments
 ;		- introduce CHANNEL_OUT constant - it's preparation to make some shift in channels
 ;		  to make room for extender
+; 2009.11.11	- rename flash_data to storage
+;		- some cleaning in models.asm to fit in new channel order
+;		- use storage_end from eeprom instead of hardcoded value
 
 
 .nolist
@@ -51,7 +54,7 @@
 
 .define DEBUG
 
-; ******** STA£E *********
+; ******** CONSTANTS *********
 .equ	ZEGAR=11059200
 .equ	ZEGAR_MAX=ZEGAR/64/1000
 .equ	LCD_PWM=150000
@@ -321,7 +324,7 @@ reset_1:
 
 		rcall	trims_find		;find trim data for sticks
 		
-		ldi	temp,1
+		ldi	temp,2			;HACK
 		sts	cur_model,temp
 		rcall	model_load		;load last used model
 
@@ -573,15 +576,15 @@ eeprom_init:
 		in	temp,EEDR
 		cpi	temp,EE_VERSION
 		brne	eeprom_init_1
+		rjmp	eeprom_init_1	;HACK
 		
 		;read some values from eeprom
 		m_eeprom_read	ee_last_model		;restore last used model
 		sts	cur_model,temp
-		
+
 		;default values for status register
 		m_eeprom_read	ee_status
 		andi	temp,(1<<ADC_FILTER)|(1<<ADC_FILTER4)|(1<<PPM_POL)	;mask only runtime bits bits
-		ori	temp,(1<<PPM_POL)	;hack
 		mov	status,temp
 		
 		ret
@@ -608,10 +611,10 @@ eeprom_init_1:
 		m_eeprom_write	ee_last_model
 		
 		;initialize end of flash data position
-		ldi	temp,low(flash_data_end<<1)
-		m_eeprom_write	ee_data_pos
+		ldi	temp,low(storage_end<<1)
+		m_eeprom_write	ee_storage_end
 		adiw	XL,1
-		ldi	temp,high(flash_data_end<<1)
+		ldi	temp,high(storage_end<<1)
 		rcall	eeprom_write
 		
 		;status register
@@ -697,10 +700,12 @@ model_load:
 		sts	sequence,zero			;clear pointer to block processing sequence
 		sts	sequence+1,zero
 
-		ldi	ZL,low(flash_data<<1)		;start of flash
-		ldi	ZH,high(flash_data<<1)
-		ldi	XL,low(flash_data_end<<1)	;end of data in flash
-		ldi	XH,high(flash_data_end<<1)
+		ldi	ZL,low(storage_start<<1)	;start of flash
+		ldi	ZH,high(storage_start<<1)
+		m_eeprom_read	ee_storage_endl		;end of data in flash
+		mov	XL,temp
+		m_eeprom_read	ee_storage_endh
+		mov	XH,temp
 		lds	temp4,cur_model			;get model_id
 		
 model_load_1:
@@ -818,10 +823,12 @@ model_load_5_2:
 ; find data with sticks trims and copy pointer to 'trims' variable
 ; trims container have model_id=0, block type and block_id=0
 trims_find:
-		ldi	ZL,low(flash_data<<1)		;start of flash
-		ldi	ZH,high(flash_data<<1)
-		ldi	XL,low(flash_data_end<<1)	;end of data in flash
-		ldi	XH,high(flash_data_end<<1)
+		ldi	ZL,low(storage_start<<1)		;start of flash
+		ldi	ZH,high(storage_start<<1)
+		m_eeprom_read	ee_storage_endl		;end of data in flash
+		mov	XL,temp
+		m_eeprom_read	ee_storage_endh
+		mov	XH,temp
 
 trims_find_1:
 		movw	YL,ZL
@@ -1880,7 +1887,7 @@ task_space:	.byte	26
 ; ###############    FLASH   D A T A    ######################
 ; ############################################################
 ; #
-flash_data:
+storage_start:
 		.db	0,84,0,0	;header
 ch_trims:	.dw	0x01FF		;center position for channel 0
 		.dw	0x0800		;a=2
@@ -1896,8 +1903,8 @@ ch_trims:	.dw	0x01FF		;center position for channel 0
 
 ; ####### INCLUDE BASIC MODEL DEFINITIONS #############
 .include "models.asm"
-flash_data_end:
-		.dw	0xff
+storage_end:
+		.dw	0xffff
 
 ;
 ; #
@@ -1945,8 +1952,9 @@ model_name:		.byte	2	;pointer to model name
 eesig:		.db	EE_SIG1,EE_SIG2	;signature
 		.db	EE_VERSION		;eeprom variables version
 ee_last_model:	.db	1
-ee_data_pos:	.db	low(flash_data_end<<1)
-		.db	high(flash_data_end<<1)
+ee_storage_end:	
+ee_storage_endl: .db	low(storage_end<<1)
+ee_storage_endh: .db	high(storage_end<<1)
 ee_status:	.db	0
 ee_statush:	.db	0
 
