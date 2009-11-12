@@ -48,8 +48,9 @@
 ;		- some cleaning in models.asm to fit in new channel order
 ;		- use storage_end from eeprom instead of hardcoded value
 ;		- finished bar drawing (make bar red if overflow)
-;		- fixed calculation of x coordinate in bar drawing
+;		- fixed calculation of x coordinate in bars drawing
 ;		- more comments in bar graph
+; 2009.11.12	- menu concept, data definition, menu structure
 
 
 .nolist
@@ -118,6 +119,9 @@
 .equ	MATH_SIGN=1		;sign of result
 .equ	BAR_OV=2		;needed for showing bars
 .equ	EXTENDER=3		;extender present?
+.equ	MENU_REDRAW=4		;menu needs redrawing?
+.equ	MENU_CHANGED=5		;menu item changed
+.equ	FMS_OUT=6		;output FMS PIC compatible frames via rs
 
 .def		zero=r2
 .def		temp3=r4
@@ -343,29 +347,6 @@ reset_1:
 
 		; #################### MAIN LOOP #####################
 
-; MENU STRUCTURE:
-; - trim
-; - reverse
-; - model
-;   - save
-;   - load
-;   - copy
-;   - edit
-;   - delete
-; - extra
-;   - stoper
-; - setup
-;   - info
-;   - debug
-;   - backup
-;   - restore
-;   - calibrate sticks
-;   - clean-up memory
-;   - output polarization
-;   - adc filtering
-;   - send FMSPIC frames via rs
-;   - pwm duty
-;
 
 main_loop:
 
@@ -395,6 +376,115 @@ main_loop:
 ; ############    SUBROUTINES    #####################################
 ; ####################################################################
 ; #
+
+;
+; draw menu
+show_menu:
+		ret
+.dseg
+menu_item:	.byte	1	;parameter fro showing menu
+.cseg
+; MENU STRUCTURE:
+; - trim (1)
+; - reverse (2)
+; - model (3)
+;   - save (4)
+;   - load (5)
+;   - copy (6)
+;   - edit (7)
+;     - blocks (8)
+;       - add (9)
+;       - remove (10)
+;       - connect (11)
+;       - description (12)
+;     - channels (13)
+;       - value (14)
+;       - description (15)
+;     - model name (16)
+;   - delete (17)
+; - extra (18)
+;   - stoper (19)
+; - setup (20)
+;   - info (21)
+;   - debug (22)
+;   - backup (23)
+;   - restore (24)
+;   - calibrate sticks (25)
+;     - channel0 (47)
+;     - channel1 (48)
+;     - channel2 (49)
+;     - channel3 (50)
+;     - channel4 (51)
+;     - channel5 (52)
+;     - channel6 (53)
+;     - channel7 (54)
+;     - reset calibration (55)
+;   - clean-up memory (26)
+;   - output polarization (27)
+;     - normal (56)
+;     - inverted (57)
+;   - adc filtering (28)
+;     - none (29)
+;     - x2 (30)
+;     - x4 (31)
+;   - send FMSPIC frames via rs (disable extender) (32)
+;     - enable (33)
+;     - disable (34)
+;   - pwm duty for LCD (35)
+;     - power from 1S LiIon (36)
+;     - power from 5V (37)
+;     - custom (38)
+;   - reset to defaults (eeprom_init) (39)
+;     - no (40)
+;     - yes (41)
+;   - extender (42)
+;     - enable (44)
+;     - disable (45)
+;     - calibrate sticks (43)
+;     - trainer mode (46)
+; last=57
+;
+; # menu data format
+; 0 - item id
+; 1 - parent item id (top level=0)
+; 2 - lenght
+; 3... - name
+; # hints
+; 0 - item id
+; 1 - length of hint
+; 2... - hint (max 44 chars) (0 terminated)
+
+menu_data:
+		.db	0,0,4,"Menu",1,0,4,"Trim"
+		.db	2,0,7,"Reverse"
+		.db	3,0,5,"Model"
+		.db	4,3,4,"Load",5,3,4,"Save"
+		.db	6,3,4,"Copy",7,3,4,"Edit"
+		.db	8,7,6,"Blocks",9,8,3,"Add",10,8,6,"Remove"
+		.db	11,8,7,"Connect"
+		.db	12,8,11,"Description"
+		.db	13,7,8,"Channels",14,13,5,"Value",15,13,11,"Description",16,7,10,"Model name"
+		.db	17,7,6,"Delete",18,0,5,"Extra",19,18,6,"Stoper"
+		.db	20,0,5,"Setup",21,20,4,"Info",22,20,5,"Debug",23,20,6,"Backup"
+		.db	24,20,7,"Restore",25,20,9,"Calibrate",47,25,9,"Channel 0"
+		.db	48,25,9,"Channel 1",49,25,9,"Channel 2"
+		.db	50,25,9,"Channel 3",51,25,9,"Channel 4"
+		.db	52,25,9,"Channel 5",53,25,9,"Channel 6"
+		.db	54,25,9,"Channel 7"
+		.db	55,25,9,"Reset all"
+		.db	26,20,15,"Clean-up memory"
+		.db	27,20,16,"PPM polarization",56,27,6,"Normal"
+		.db	57,27,8,"Inverted",28,20,13,"ADC filtering",29,28,4,"None"
+		.db	30,28,2,"x2",31,28,2,"x4"
+;		.db	32,20,10,"FMSPIC out",34,32,7,"Disable",33,32,6,"Enable"
+		.db	35,20,9,"Backlight"
+		.db	36,35,12,"1 LiIon cell",37,35,2,"5V"
+		.db	38,35,6,"Custom",39,20,17,"Reset to defaults",40,39,2,"NO"
+		.db	41,39,3,"Yes"
+;		.db	42,20,8,"Extender",44,42,6,"Enable"
+;		.db	45,42,7,"Disable"
+;		.db	43,42,16,"Calibrate sticks",46,42,12,"Trainer mode"
+menu_hints:
 
 
 ;
