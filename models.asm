@@ -171,8 +171,8 @@
 		.db	model+(2<<6),6,31,0,0,0		;ch3 trim
 		.db	model+(2<<6),6,33,0,0,4		;ch0 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,38,0,0,4		;ch1 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,35,0,0,2		;ch0 x0.5
-		.db	model+(2<<6),6,40,0,0,2		;ch1 x0.5
+		.db	model+(2<<6),6,35,0,0,4		;ch0 x0.5
+		.db	model+(2<<6),6,40,0,0,4		;ch1 x0.5
 		.db	model+(2<<6),6,44,0,0,4		;ch2 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,46,0,0,4		;ch3 reverse (default 1 = no reverse)
 		;blocks
@@ -190,6 +190,6 @@
 		.db	model+(0<<6),10,12,0,2,2,1,43,44,18	;rev for ch2
 		.db	model+(0<<6),10,13,0,2,2,1,45,46,19	;rev for ch03
 		;decription
-		.db	model+(3<<6),14,0,"Delta 2CH",0,0
+		.db	model+(3<<6),14,0,"Delta 2CH!",0
 		;block processing order
 		.db	model+(1<<6),16,1,2,3,4,5,6,8,9,7,10,11,12,13,0
