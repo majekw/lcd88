@@ -51,12 +51,16 @@
 ;		- fixed calculation of x coordinate in bars drawing
 ;		- more comments in bar graph
 ; 2009.11.12	- menu concept, data definition, menu structure
+; 2009.11.17	- make status line
+;		- model name moved to status line
+;		- output bars moved to status line
+;		- turn off debuging
 
 
 .nolist
 .include "m88def.inc"		;standard header for atmega88
 
-.define DEBUG
+;.define DEBUG
 
 ; ******** CONSTANTS *********
 .equ	ZEGAR=11059200
@@ -122,6 +126,7 @@
 .equ	MENU_REDRAW=4		;menu needs redrawing?
 .equ	MENU_CHANGED=5		;menu item changed
 .equ	FMS_OUT=6		;output FMS PIC compatible frames via rs
+.equ	STATUS_CHANGED=7	;if set, redraw all status line
 
 .def		zero=r2
 .def		temp3=r4
@@ -335,14 +340,11 @@ reset_1:
 		sts	cur_model,temp
 		rcall	model_load		;load last used model
 
+		ori	statush,(1<<STATUS_CHANGED)
+		rcall	show_status
+
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
-		
-		;print model name
-		m_lcd_text_pos	0,3
-		lds	ZL,model_name
-		lds	ZH,model_name+1
-		adiw	ZL,3
-		rcall	lcd_text
+
 
 
 		; #################### MAIN LOOP #####################
@@ -382,7 +384,7 @@ main_loop:
 show_menu:
 		ret
 .dseg
-menu_item:	.byte	1	;parameter fro showing menu
+menu_item:	.byte	1	;parameter for showing menu
 .cseg
 ; MENU STRUCTURE:
 ; - trim (1)
@@ -486,13 +488,53 @@ menu_data:
 ;		.db	43,42,16,"Calibrate sticks",46,42,12,"Trainer mode"
 menu_hints:
 
+;
+; redraw status line
+.equ	STATUS_LINE_Y=13*8
+show_status:
+		sbrs	statush,STATUS_CHANGED
+		ret
+		;set background
+		m_lcd_set_fg	COLOR_BLACK
+		m_lcd_fill_rect	0,STATUS_LINE_Y,DISP_W,3*8+4
+		
+		;model name
+		rcall	show_model_name
+		
+		;output bars
+		rcall	show_out_bars
+		
+		ret
+;
+
+
+;
+; show model name
+show_model_name:
+		m_lcd_set_fg	COLOR_DKBLUE
+		m_lcd_fill_rect	0,STATUS_LINE_Y,DISP_W,8
+
+		m_lcd_text_pos	0,13
+		m_lcd_set_bg	COLOR_DKBLUE
+		m_lcd_set_fg	COLOR_YELLOW
+		sbrs	status,MODEL_CHANGED
+		rjmp	show_model_name_1
+		m_lcd_set_fg	COLOR_RED
+show_model_name_1:
+		lds	ZL,model_name
+		lds	ZH,model_name+1
+		adiw	ZL,3
+		rcall	lcd_text
+		ret
+;
+
 
 ;
 ; draw bars of output channels (height is fixed to 16)
-.equ		OUT_BARS_X=111
-.equ		OUT_BARS_Y=8
+.equ		OUT_BARS_X=14*8-1
+.equ		OUT_BARS_Y=8*14+1
 .equ		OUT_BARS_WIDTH=6
-.equ		OUT_BARS_SPACE=1
+.equ		OUT_BARS_SPACE=2
 show_out_bars:
 		ldi	temp2,PPM_CHANNELS	;8 channels
 show_out_bars_1:
@@ -543,12 +585,12 @@ show_out_bars_4:
 		ldi	temp,17		;dy - calulate height of background bar
 		sub	temp,temp2
 		sts	lcd_arg4,temp
-		m_lcd_set_fg	COLOR_WHITE
+		m_lcd_set_fg	COLOR_BLACK
 		push	temp2
 		rcall	lcd_fill_rect	;draw upper part of bar (white background)
 		pop	temp2
 		
-		m_lcd_set_fg	COLOR_DKGREEN
+		m_lcd_set_fg	COLOR_GREEN
 		inc	temp2		;dy - bar should have at least one pixel of height
 		sts	lcd_arg4,temp2
 		
@@ -561,7 +603,7 @@ show_out_bars_4:
 		
 		sbrs	statush,BAR_OV	;if overflow, set color to red
 		rjmp	show_out_bars_6
-		m_lcd_set_fg	COLOR_DKRED
+		m_lcd_set_fg	COLOR_RED
 show_out_bars_6:
 		rcall	lcd_fill_rect	;draw lower part of bar
 
@@ -570,7 +612,7 @@ show_out_bars_6:
 		breq	show_out_bars_5
 		rjmp	show_out_bars_1
 show_out_bars_5:
-		m_lcd_set_fg	COLOR_BLACK	;restore default color
+		;m_lcd_set_fg	COLOR_BLACK	;restore default color
 		ret
 ;
 
@@ -582,18 +624,18 @@ lcd_initialize:
 		rcall	lcd_init
 
 		;draw some garbage on lcd
-		m_lcd_set_bg	COLOR_YELLOW
-		m_lcd_set_fg	COLOR_RED
-		m_lcd_fill_rect	10,10,20,20
+;		m_lcd_set_bg	COLOR_YELLOW
+;		m_lcd_set_fg	COLOR_RED
+;		m_lcd_fill_rect	10,10,20,20
 		
-		m_lcd_set_fg	COLOR_BLUE
-		m_lcd_fill_rect	64,64,50,50
+;		m_lcd_set_fg	COLOR_BLUE
+;		m_lcd_fill_rect	64,64,50,50
 
-		m_lcd_set_fg	COLOR_BLACK
-		m_lcd_fill_rect	0,0,176,10
+;		m_lcd_set_fg	COLOR_BLACK
+;		m_lcd_fill_rect	0,0,176,10
 		
-		m_lcd_set_bg	COLOR_BLACK
-		m_lcd_set_fg	COLOR_CYAN
+;		m_lcd_set_bg	COLOR_BLACK
+;		m_lcd_set_fg	COLOR_CYAN
 
 		m_lcd_text_pos	0,0
 		m_lcd_text	banner
