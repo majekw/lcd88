@@ -19,6 +19,7 @@
 ;		- moved back lcd_char from hardware dependend includes
 ; 2007.12.17	- made text routines optional
 ; 2009.06.08	- changed spi_tx to work on mega88
+; 2009.11.20	- small comment
 
 
 ; ##### CONFIG FEATURES ####################################
@@ -435,6 +436,7 @@ lcd_cls:
 ;
 ; # print char
 ; arg1=char
+; destroys: temp,temp2,temp3,temp4,r0
 lcd_char:
 		push	ZH
 		push	ZL

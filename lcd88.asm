@@ -55,6 +55,8 @@
 ;		- model name moved to status line
 ;		- output bars moved to status line
 ;		- turn off debuging
+; 2009.11.19	- start menucoding
+;		- changed format of menu definition
 
 
 .nolist
@@ -128,6 +130,7 @@
 .equ	FMS_OUT=6		;output FMS PIC compatible frames via rs
 .equ	STATUS_CHANGED=7	;if set, redraw all status line
 
+; registers
 .def		zero=r2
 .def		temp3=r4
 .def		temp4=r5
@@ -345,7 +348,10 @@ reset_1:
 
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
 
-
+		;init menu
+		ldi	temp,1				;set initial menu positin
+		sts	menu_item,temp
+		ori	statush,(1<<MENU_REDRAW)	;force redraw menu on first call
 
 		; #################### MAIN LOOP #####################
 
@@ -366,7 +372,8 @@ main_loop:
 .endif
 
 		rcall	show_out_bars
-
+		rcall	show_menu
+		
 		rjmp	main_loop
 
 		; ################### END OF MAIN LOOP ################
@@ -382,7 +389,87 @@ main_loop:
 ;
 ; draw menu
 show_menu:
+		;repaint whole menu?
+		sbrs	statush,MENU_REDRAW
+		rjmp	show_menu_key
+		
+		;repainting menu
+		m_lcd_set_fg	COLOR_DKRED
+		m_lcd_fill_rect	0,0,DISP_W,8
+		m_lcd_set_fg	COLOR_WHITE		;clear screen
+		m_lcd_fill_rect	0,8,DISP_W,12*8
+		
+		;submenu name
+		ldi	temp,0xff	;find item
+		ldi	temp2,0		;ignore parent item
+		rcall	menu_find	;find menu item
+		brcs	show_menu_key	;if not found (error!), skip the rest
+		sbiw	ZL,1		;get parent id
+		lpm	temp3,Z
+		lds	temp4,menu_item	;save menu_item
+		sts	menu_item,temp3	;find parent name
+		push	temp4
+		rcall	menu_find
+		pop	temp4
+		sts	menu_item,temp4	;restore menu_item
+		brcs	show_menu_key	;if not found (error!), skip the rest
+		
+		m_lcd_set_bg	COLOR_DKRED
+		;m_lcd_set_fg	COLOR_WHITE
+		m_lcd_text_pos	1,0
+		rcall	lcd_text	;Z is set to next pos here
+		
+		;draw menu
+		;...
+show_menu_key:
 		ret
+;
+; search for menu item
+; args:
+;	temp: mask for item
+;	temp2: mask for parent item
+menu_find:
+		ldi	ZL,low(menu_data<<1)	;start of menu definition
+		ldi	ZH,high(menu_data<<1)
+menu_find_next:
+		ldi	XL,low(menu_data_end<<1)	;end of menu definition
+		ldi	XH,high(menu_data_end<<1)
+menu_find_next_1:
+		movw	WL,ZL		;save Z for future use
+		;check for end
+		cp	ZL,XL
+		cpc	ZH,XH
+		brcs	menu_find_next_2
+		sec			;set carry - not found
+		ret
+menu_find_next_2:
+		lpm	temp3,Z+		;check menu item
+		lds	temp4,menu_item
+		and	temp3,temp
+		and	temp4,temp
+		cp	temp3,temp4
+		brne	menu_find_next_e
+		lpm	temp3,Z+		;check parent item
+		lds	temp4,menu_item
+		and	temp3,temp2
+		and	temp4,temp2
+		cp	temp3,temp4
+		brne	menu_find_next_e
+		;found
+		;movw	ZL,WL		;restore Z
+		clc			;clear carry - OK
+		ret
+menu_find_next_e:
+		movw	ZL,WL
+		adiw	ZL,2
+menu_find_next_e1:
+		lpm	temp3,Z+	;get char
+		tst	temp3
+		brne	menu_find_next_e1	;exit if =0
+		rjmp	menu_find_next_1
+;
+
+
 .dseg
 menu_item:	.byte	1	;parameter for showing menu
 .cseg
@@ -449,43 +536,49 @@ menu_item:	.byte	1	;parameter for showing menu
 ; # menu data format
 ; 0 - item id
 ; 1 - parent item id (top level=0)
-; 2 - lenght
-; 3... - name
+; 2... - name (0 terminated)
 ; # hints
 ; 0 - item id
 ; 1 - length of hint
 ; 2... - hint (max 44 chars) (0 terminated)
 
 menu_data:
-		.db	0,0,4,"Menu",1,0,4,"Trim"
-		.db	2,0,7,"Reverse"
-		.db	3,0,5,"Model"
-		.db	4,3,4,"Load",5,3,4,"Save"
-		.db	6,3,4,"Copy",7,3,4,"Edit"
-		.db	8,7,6,"Blocks",9,8,3,"Add",10,8,6,"Remove"
-		.db	11,8,7,"Connect"
-		.db	12,8,11,"Description"
-		.db	13,7,8,"Channels",14,13,5,"Value",15,13,11,"Description",16,7,10,"Model name"
-		.db	17,7,6,"Delete",18,0,5,"Extra",19,18,6,"Stoper"
-		.db	20,0,5,"Setup",21,20,4,"Info",22,20,5,"Debug",23,20,6,"Backup"
-		.db	24,20,7,"Restore",25,20,9,"Calibrate",47,25,9,"Channel 0"
-		.db	48,25,9,"Channel 1",49,25,9,"Channel 2"
-		.db	50,25,9,"Channel 3",51,25,9,"Channel 4"
-		.db	52,25,9,"Channel 5",53,25,9,"Channel 6"
-		.db	54,25,9,"Channel 7"
-		.db	55,25,9,"Reset all"
-		.db	26,20,15,"Clean-up memory"
-		.db	27,20,16,"PPM polarization",56,27,6,"Normal"
-		.db	57,27,8,"Inverted",28,20,13,"ADC filtering",29,28,4,"None"
-		.db	30,28,2,"x2",31,28,2,"x4"
-;		.db	32,20,10,"FMSPIC out",34,32,7,"Disable",33,32,6,"Enable"
-		.db	35,20,9,"Backlight"
-		.db	36,35,12,"1 LiIon cell",37,35,2,"5V"
-		.db	38,35,6,"Custom",39,20,17,"Reset to defaults",40,39,2,"NO"
-		.db	41,39,3,"Yes"
+		.db	0,0,"Main Menu",0
+		.db	1,0,"Trim",0,2,0,"Reverse",0,3,0,"Model",0,4,3,"Load",0
+		.db	5,3,"Save",0,6,3,"Copy",0
+		.db	7,3,"Edit",0,8,7,"Blocks",0
+		.db	9,8,"Add",0
+		.db	10,8,"Remove",0,11,8,"Connect",0,12,8,"Description",0,13,7,"Channels",0
+		.db	14,13,"Value",0
+		.db	15,13,"Description",0
+		.db	16,7,"Model name",0,17,3,"Delete",0
+		.db	18,0,"Extra",0
+		.db	19,18,"Stoper",0,20,0,"Setup",0,21,20,"Info",0
+		.db	22,20,"Debug",0
+		.db	23,20,"Backup ",0,24,20,"Restore",0,25,20,"Calibrate",0
+		.db	47,25,"Channel 0",0
+		.db	48,25,"Channel 1",0
+		.db	49,25,"Channel 2",0
+		.db	50,25,"Channel 3",0
+		.db	51,25,"Channel 4",0
+		.db	52,25,"Channel 5",0
+		.db	53,25,"Channel 6",0
+		.db	54,25,"Channel 7",0
+		.db	55,25,"Reset all",0
+		.db	26,20,"Clean-up memory",0
+		.db	27,20,"PPM polarization",0,56,27,"Normal",0
+		.db	57,27,"Inverted",0,28,20,"ADC filtering",0,29,28,"None",0
+		.db	30,28,"x2",0,31,28,"x4",0
+		.db	32,20,"FMS-PIC out",0
+		.db	34,32,"Disable",0
+		.db	33,32,"Enable",0,35,20,"Backlight",0,36,35,"1S LiIon",0
+		.db	37,35,"5V",0,38,35,"Custom",0
+		.db	39,20,"Reset to defaults",0
+		.db	40,39,"NO",0,41,39,"Yes",0,0xff
 ;		.db	42,20,8,"Extender",44,42,6,"Enable"
 ;		.db	45,42,7,"Disable"
 ;		.db	43,42,16,"Calibrate sticks",46,42,12,"Trainer mode"
+menu_data_end:
 menu_hints:
 
 ;
