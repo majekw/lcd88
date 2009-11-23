@@ -55,8 +55,9 @@
 ;		- model name moved to status line
 ;		- output bars moved to status line
 ;		- turn off debuging
-; 2009.11.19	- start menucoding
+; 2009.11.19	- start menu coding
 ;		- changed format of menu definition
+; 2009.11.21	- small rewrite of part of menu showing (not finished yet)
 
 
 .nolist
@@ -394,24 +395,22 @@ show_menu:
 		rjmp	show_menu_key
 		
 		;repainting menu
-		m_lcd_set_fg	COLOR_DKRED
+		m_lcd_set_fg	COLOR_DKRED	;set upper part (for menu name)
 		m_lcd_fill_rect	0,0,DISP_W,8
-		m_lcd_set_fg	COLOR_WHITE		;clear screen
+		m_lcd_set_fg	COLOR_WHITE	;clear rest of screen
 		m_lcd_fill_rect	0,8,DISP_W,12*8
 		
 		;submenu name
+		lds	temp,menu_item	;copy menu item for finding
+		sts	menu_itemf,temp
 		ldi	temp,0xff	;find item
 		ldi	temp2,0		;ignore parent item
 		rcall	menu_find	;find menu item
 		brcs	show_menu_key	;if not found (error!), skip the rest
 		sbiw	ZL,1		;get parent id
 		lpm	temp3,Z
-		lds	temp4,menu_item	;save menu_item
-		sts	menu_item,temp3	;find parent name
-		push	temp4
+		sts	menu_itemf,temp3	;find parent name
 		rcall	menu_find
-		pop	temp4
-		sts	menu_item,temp4	;restore menu_item
 		brcs	show_menu_key	;if not found (error!), skip the rest
 		
 		m_lcd_set_bg	COLOR_DKRED
@@ -420,14 +419,30 @@ show_menu:
 		rcall	lcd_text	;Z is set to next pos here
 		
 		;draw menu
+		m_lcd_set_bg	COLOR_WHITE	;initialize colors
+		m_lcd_set_fg	COLOR_BLACK
+		m_lcd_text_pos	0,1		;set position of first menu item
+		ldi	temp,0		;ignore item id
+		ldi	temp2,0xff	;find by parent id
+		rcall	menu_find	;find first
+show_menu_1:
+		brcs	show_menu_key	;check for end of loop
+		
+		sbiw	ZL,2		;need to get menu item id
+		lpm	temp3,Z
+		lds	temp4,menu_item
+		cp	temp3,temp4
 		;...
 show_menu_key:
+		andi	statush,(1<<MENU_REDRAW)	;don't redraw menu again
 		ret
 ;
 ; search for menu item
 ; args:
 ;	temp: mask for item
 ;	temp2: mask for parent item
+; destroys: temp3, temp4, X
+; return: Z points to first character of menu item name
 menu_find:
 		ldi	ZL,low(menu_data<<1)	;start of menu definition
 		ldi	ZH,high(menu_data<<1)
@@ -444,13 +459,13 @@ menu_find_next_1:
 		ret
 menu_find_next_2:
 		lpm	temp3,Z+		;check menu item
-		lds	temp4,menu_item
+		lds	temp4,menu_itemf
 		and	temp3,temp
 		and	temp4,temp
 		cp	temp3,temp4
 		brne	menu_find_next_e
 		lpm	temp3,Z+		;check parent item
-		lds	temp4,menu_item
+		lds	temp4,menu_itemf
 		and	temp3,temp2
 		and	temp4,temp2
 		cp	temp3,temp4
@@ -472,6 +487,7 @@ menu_find_next_e1:
 
 .dseg
 menu_item:	.byte	1	;parameter for showing menu
+menu_itemf:	.byte	1	;used to find menu item
 .cseg
 ; MENU STRUCTURE:
 ; - trim (1)
