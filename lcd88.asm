@@ -59,6 +59,7 @@
 ;		- changed format of menu definition
 ; 2009.11.21	- small rewrite of part of menu showing (not finished yet)
 ; 2009.11.23	- showing menu finished
+;		- start coding menu navigation (finding next, previous, upper and lower item)
 
 
 .nolist
@@ -404,16 +405,14 @@ show_menu:
 		;submenu name
 		lds	temp,menu_item	;copy menu item for finding
 		sts	menu_itemf,temp
-		ldi	temp,0xff	;find item
-		ldi	temp2,0		;ignore parent item
-		rcall	menu_find	;find menu item
+		rcall	menu_find_item
 		brcc	show_menu_00
 		rjmp	show_menu_key	;if not found (error!), skip the rest
 show_menu_00:
 		sbiw	ZL,1		;get parent id
-		lpm	temp3,Z
-		sts	menu_itemf,temp3	;find parent name
-		rcall	menu_find
+		lpm	temp,Z
+		sts	menu_itemf,temp	;find parent name
+		rcall	menu_find_item
 		brcc	show_menu_01
 		rjmp	show_menu_key	;if not found (error!), skip the rest
 show_menu_01:
@@ -423,12 +422,8 @@ show_menu_01:
 		rcall	lcd_text	;Z is set to next pos here
 		
 		;draw menu
-		;m_lcd_set_bg	COLOR_WHITE	;initialize colors
-		;m_lcd_set_fg	COLOR_BLACK
 		m_lcd_text_pos	0,1		;set position of first menu item
-		ldi	temp,0		;ignore item id
-		ldi	temp2,0xff	;find by parent id
-		rcall	menu_find	;find first
+		rcall	menu_find_child	;find first child of parent
 show_menu_1:
 		brcs	show_menu_key	;check for end of loop
 		
@@ -458,7 +453,8 @@ show_menu_3:
 		rcall	menu_find_next
 		brcc	show_menu_1	;loop if not last
 		
-show_menu_key:
+		
+show_menu_key:	;key handling - menu navigation
 		andi	statush,~(1<<MENU_REDRAW)	;don't redraw menu again
 		
 		;check for key press
@@ -524,6 +520,69 @@ menu_find_next_e1:
 ;
 
 
+;
+; #### some usefull finds ####
+; find item
+menu_find_item:
+		ldi	temp,0xff	;find item
+		ldi	temp2,0		;ignore parent item
+		rjmp	menu_find	;find menu item
+;
+
+;
+; find first child
+menu_find_child:
+		ldi	temp,0		;ignore item id
+		ldi	temp2,0xff	;check parent id
+		rjmp	menu_find
+;
+
+;
+; find upper item
+menu_find_upper:
+		lds	r0,menu_item	;find item
+		sts	menu_itemf,r0
+		rcall	menu_find_item
+		
+		sbiw	ZL,1		;get parent
+		lpm	temp,Z
+		sts	menu_itemf,temp
+		rcall	menu_find_child	;find first menu item on the same level
+menu_find_upper_1:
+		brcs	menu_find_upper_e	;error?
+		sbiw	ZL,2		;get beginnig of block (id)
+		lpm	temp3,Z		;id
+		lds	temp4,menu_item	;get last id
+		cp	temp3,temp3	;if equal then this is the end
+		breq	menu_find_upper_e
+		;not equal, update r0
+		mov	r0,temp3
+		adiw	ZL,2
+		rcall	menu_find_next_e1	;hack to skip name and search next
+		brcc	menu_find_upper_1	;loop if not end/error
+menu_find_upper_e:
+		sts	menu_itemf,r0	;in r0 is last item id
+		rjmp	menu_find_item	;find this and return
+;
+
+;
+; find lower item
+menu_find_lower:
+		lds	temp,menu_item	;find item
+		sts	menu_itemf,temp
+		rcall	menu_find_item
+		brcs	menu_find_lower_e
+		sbiw	ZL,1		;get parent id
+		lpm	temp,Z
+		adiw	ZL,1		;restore Z
+		sts	menu_itemf,temp	;we will search first item with the same parent id
+		ldi	temp,0		;ignore item id
+		ldi	temp2,0xff	;search for parent id
+		rjmp	menu_find_next_e1	;hack - jump to end of search loop, X is set by last call of menu_find
+menu_find_lower_e:
+		ret
+;
+
 .dseg
 menu_item:	.byte	1	;parameter for showing menu
 menu_itemf:	.byte	1	;used to find menu item
@@ -562,7 +621,7 @@ menu_itemf:	.byte	1	;used to find menu item
 ;     - channel5 (52)
 ;     - channel6 (53)
 ;     - channel7 (54)
-;     - reset calibration (55)
+;     - reset all (55)
 ;   - clean-up memory (26)
 ;   - output polarization (27)
 ;     - normal (56)
@@ -572,8 +631,8 @@ menu_itemf:	.byte	1	;used to find menu item
 ;     - x2 (30)
 ;     - x4 (31)
 ;   - send FMSPIC frames via rs (disable extender) (32)
-;     - disable (34)
-;     - enable (33)
+;     - disable (33)
+;     - enable (34)
 ;   - pwm duty for LCD (35)
 ;     - power from 1S LiIon (36)
 ;     - power from 5V (37)
@@ -625,8 +684,8 @@ menu_data:
 		.db	57,27,"Inverted",0,28,20,"ADC filtering",0,29,28,"None",0
 		.db	30,28,"x2",0,31,28,"x4",0
 		.db	32,20,"FMS-PIC out",0
-		.db	34,32,"Disable",0
-		.db	33,32,"Enable",0,35,20,"Backlight",0,36,35,"1S LiIon",0
+		.db	33,32,"Disable",0
+		.db	34,32,"Enable",0,35,20,"Backlight",0,36,35,"1S LiIon",0
 		.db	37,35,"5V",0,38,35,"Custom",0
 		.db	39,20,"Reset to defaults",0
 		.db	40,39,"NO",0,41,39,"Yes",0,0xff,0xff,0
