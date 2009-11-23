@@ -58,6 +58,7 @@
 ; 2009.11.19	- start menu coding
 ;		- changed format of menu definition
 ; 2009.11.21	- small rewrite of part of menu showing (not finished yet)
+; 2009.11.23	- showing menu finished
 
 
 .nolist
@@ -406,21 +407,24 @@ show_menu:
 		ldi	temp,0xff	;find item
 		ldi	temp2,0		;ignore parent item
 		rcall	menu_find	;find menu item
-		brcs	show_menu_key	;if not found (error!), skip the rest
+		brcc	show_menu_00
+		rjmp	show_menu_key	;if not found (error!), skip the rest
+show_menu_00:
 		sbiw	ZL,1		;get parent id
 		lpm	temp3,Z
 		sts	menu_itemf,temp3	;find parent name
 		rcall	menu_find
-		brcs	show_menu_key	;if not found (error!), skip the rest
-		
+		brcc	show_menu_01
+		rjmp	show_menu_key	;if not found (error!), skip the rest
+show_menu_01:
 		m_lcd_set_bg	COLOR_DKRED
 		;m_lcd_set_fg	COLOR_WHITE
-		m_lcd_text_pos	1,0
+		m_lcd_text_pos	0,0
 		rcall	lcd_text	;Z is set to next pos here
 		
 		;draw menu
-		m_lcd_set_bg	COLOR_WHITE	;initialize colors
-		m_lcd_set_fg	COLOR_BLACK
+		;m_lcd_set_bg	COLOR_WHITE	;initialize colors
+		;m_lcd_set_fg	COLOR_BLACK
 		m_lcd_text_pos	0,1		;set position of first menu item
 		ldi	temp,0		;ignore item id
 		ldi	temp2,0xff	;find by parent id
@@ -428,13 +432,48 @@ show_menu:
 show_menu_1:
 		brcs	show_menu_key	;check for end of loop
 		
-		sbiw	ZL,2		;need to get menu item id
+		sbiw	ZL,2		;need to get menu item id to identify current position
 		lpm	temp3,Z
 		lds	temp4,menu_item
 		cp	temp3,temp4
-		;...
+		brne	show_menu_2	;no -> go forward
+		m_lcd_set_bg	COLOR_BLACK	;set inversed colors
+		m_lcd_set_fg	COLOR_WHITE
+		rjmp	show_menu_3
+show_menu_2:
+		m_lcd_set_bg	COLOR_WHITE	;set normal colors
+		m_lcd_set_fg	COLOR_BLACK
+show_menu_3:
+		adiw	ZL,2		;get text address
+		rcall	lcd_text	;draw chars
+		
+		lds	temp,lcd_txt_y	;go to new line
+		inc	temp
+		sts	lcd_txt_y,temp
+		ldi	temp,0		;x
+		sts	lcd_txt_x,temp
+		
+		ldi	temp,0		;find next item
+		ldi	temp2,0xff
+		rcall	menu_find_next
+		brcc	show_menu_1	;loop if not last
+		
 show_menu_key:
-		andi	statush,(1<<MENU_REDRAW)	;don't redraw menu again
+		andi	statush,~(1<<MENU_REDRAW)	;don't redraw menu again
+		
+		;check for key press
+		lds	temp,keys
+		tst	temp
+		breq	show_menu_key_e
+		ori	statush,(1<<MENU_REDRAW)	;redraw menu
+		lds	temp,menu_item		;next menu item
+		inc	temp
+		sts	menu_item,temp
+show_menu_key_1:
+		lds	temp,keys	;wait for key release
+		tst	temp
+		brne	show_menu_key_1
+show_menu_key_e:
 		ret
 ;
 ; search for menu item
@@ -533,8 +572,8 @@ menu_itemf:	.byte	1	;used to find menu item
 ;     - x2 (30)
 ;     - x4 (31)
 ;   - send FMSPIC frames via rs (disable extender) (32)
-;     - enable (33)
 ;     - disable (34)
+;     - enable (33)
 ;   - pwm duty for LCD (35)
 ;     - power from 1S LiIon (36)
 ;     - power from 5V (37)
@@ -559,7 +598,7 @@ menu_itemf:	.byte	1	;used to find menu item
 ; 2... - hint (max 44 chars) (0 terminated)
 
 menu_data:
-		.db	0,0,"Main Menu",0
+		.db	0,255,"Main Menu",0
 		.db	1,0,"Trim",0,2,0,"Reverse",0,3,0,"Model",0,4,3,"Load",0
 		.db	5,3,"Save",0,6,3,"Copy",0
 		.db	7,3,"Edit",0,8,7,"Blocks",0
@@ -590,7 +629,7 @@ menu_data:
 		.db	33,32,"Enable",0,35,20,"Backlight",0,36,35,"1S LiIon",0
 		.db	37,35,"5V",0,38,35,"Custom",0
 		.db	39,20,"Reset to defaults",0
-		.db	40,39,"NO",0,41,39,"Yes",0,0xff
+		.db	40,39,"NO",0,41,39,"Yes",0,0xff,0xff,0
 ;		.db	42,20,8,"Extender",44,42,6,"Enable"
 ;		.db	45,42,7,"Disable"
 ;		.db	43,42,16,"Calibrate sticks",46,42,12,"Trainer mode"
