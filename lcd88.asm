@@ -60,6 +60,8 @@
 ; 2009.11.21	- small rewrite of part of menu showing (not finished yet)
 ; 2009.11.23	- showing menu finished
 ;		- start coding menu navigation (finding next, previous, upper and lower item)
+; 2009.11.25	- menu navigation finished
+;		- small size optimization in menu
 
 
 .nolist
@@ -459,18 +461,59 @@ show_menu_key:	;key handling - menu navigation
 		
 		;check for key press
 		lds	temp,keys
-		tst	temp
-		breq	show_menu_key_e
-		ori	statush,(1<<MENU_REDRAW)	;redraw menu
-		lds	temp,menu_item		;next menu item
-		inc	temp
-		sts	menu_item,temp
-show_menu_key_1:
-		lds	temp,keys	;wait for key release
-		tst	temp
+		tst	temp		;any key?
 		brne	show_menu_key_1
-show_menu_key_e:
 		ret
+
+		;wait for key release
+show_menu_key_1:
+		lds	temp2,keys		;this part blocks of drawing bars in real time
+		tst	temp2
+		brne	show_menu_key_1
+		
+		rcall	menu_copy_item	;find item
+		;check what key was pressed
+		sbrc	temp,KEY_UP
+		rjmp	show_menu_key_up
+		sbrc	temp,KEY_DOWN
+		rjmp	show_menu_key_down
+		sbrc	temp,KEY_ESC
+		rjmp	show_menu_key_esc
+		sbrc	temp,KEY_ENTER
+		rjmp	show_menu_key_enter
+		rjmp	show_menu_key_e		;if nothing found -> end
+show_menu_key_up:
+		rcall	menu_find_upper
+show_menu_key_ee:
+		sbiw	ZL,2
+		lpm	temp,Z
+		sts	menu_item,temp
+		rjmp	show_menu_key_e
+show_menu_key_down:
+		rcall	menu_find_lower
+		rjmp	show_menu_key_ee
+show_menu_key_esc:
+		rcall	menu_find_item
+		sbiw	ZL,1			;get parent id
+		lpm	temp,Z
+		tst	temp			;check if we are already at top level?
+		breq	show_menu_key_e		;if yes, do nothing
+		sts	menu_item,temp		;update menu item
+		rjmp	show_menu_key_e
+
+show_menu_key_enter:
+		rcall	menu_find_child
+		brcs	show_menu_key_e		;don't update if error/not found
+		sbiw	ZL,2			;get id
+		lpm	temp,Z
+		sts	menu_item,temp
+		ori	statush,(1<<MENU_CHANGED)
+		rjmp	show_menu_key_e
+
+show_menu_key_e:
+		ori	statush,(1<<MENU_REDRAW)	;redraw menu
+		ret
+
 ;
 ; search for menu item
 ; args:
@@ -540,20 +583,19 @@ menu_find_child:
 ;
 ; find upper item
 menu_find_upper:
-		lds	r0,menu_item	;find item
-		sts	menu_itemf,r0
+		rcall	menu_copy_item	;find item
 		rcall	menu_find_item
 		
 		sbiw	ZL,1		;get parent
 		lpm	temp,Z
 		sts	menu_itemf,temp
 		rcall	menu_find_child	;find first menu item on the same level
-menu_find_upper_1:
 		brcs	menu_find_upper_e	;error?
-		sbiw	ZL,2		;get beginnig of block (id)
-		lpm	temp3,Z		;id
+menu_find_upper_1:
+		sbiw	ZL,2		;get id of found block
+		lpm	temp3,Z
 		lds	temp4,menu_item	;get last id
-		cp	temp3,temp3	;if equal then this is the end
+		cp	temp3,temp4	;if equal then this is the end
 		breq	menu_find_upper_e
 		;not equal, update r0
 		mov	r0,temp3
@@ -568,8 +610,7 @@ menu_find_upper_e:
 ;
 ; find lower item
 menu_find_lower:
-		lds	temp,menu_item	;find item
-		sts	menu_itemf,temp
+		rcall	menu_copy_item	;find item
 		rcall	menu_find_item
 		brcs	menu_find_lower_e
 		sbiw	ZL,1		;get parent id
@@ -578,8 +619,20 @@ menu_find_lower:
 		sts	menu_itemf,temp	;we will search first item with the same parent id
 		ldi	temp,0		;ignore item id
 		ldi	temp2,0xff	;search for parent id
-		rjmp	menu_find_next_e1	;hack - jump to end of search loop, X is set by last call of menu_find
+		rcall	menu_find_next_e1	;hack - jump to end of search loop, X is set by last call of menu_find
+		brcc	menu_find_lower_e	;if not out of range - exit
+		;out of range
+		rcall	menu_copy_item
+		rcall	menu_find_item
 menu_find_lower_e:
+		ret
+;
+
+;
+; copy byte from menu_item to menu_itemf
+menu_copy_item:
+		lds	r0,menu_item
+		sts	menu_itemf,r0
 		ret
 ;
 
