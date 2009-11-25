@@ -62,6 +62,9 @@
 ;		- start coding menu navigation (finding next, previous, upper and lower item)
 ; 2009.11.25	- menu navigation finished
 ;		- small size optimization in menu
+;		- addedd missing initialization of statush
+;		- moved some common code in menu drawing to separate subroutines
+
 
 
 .nolist
@@ -378,6 +381,25 @@ main_loop:
 
 		rcall	show_out_bars
 		rcall	show_menu
+		sbrs	statush,MENU_CHANGED
+		rjmp	main_loop_xx
+		
+		;draw header 
+		rcall	menu_bar_clear	;clear header
+		rcall	menu_copy_item	;draw name of choosen item
+		rcall	menu_find_item
+		rcall	menu_bar_text
+		rcall	menu_body_clear	;and clear body
+ml0:
+		lds	temp,keys	;wait for ESC
+		sbrs	temp,KEY_ESC
+		rjmp	ml0
+ml1:
+		lds	temp,keys	;wait for key release
+		tst	temp
+		brne	ml1
+
+main_loop_xx:
 		
 		rjmp	main_loop
 
@@ -392,6 +414,27 @@ main_loop:
 ; #
 
 ;
+; helpers for drawing/using menu area
+menu_bar_clear:
+		m_lcd_set_fg	COLOR_DKRED	;set upper part (for menu name)
+		m_lcd_fill_rect	0,0,DISP_W,8
+		ret
+;
+menu_bar_text:
+		m_lcd_set_bg	COLOR_DKRED
+		m_lcd_set_fg	COLOR_WHITE
+		m_lcd_text_pos	0,0
+		rcall	lcd_text
+		ret
+;
+menu_body_clear:
+		m_lcd_set_fg	COLOR_WHITE	;clear rest of screen
+		m_lcd_fill_rect	0,8,DISP_W,12*8
+		ret
+;
+
+
+;
 ; draw menu
 show_menu:
 		;repaint whole menu?
@@ -399,10 +442,7 @@ show_menu:
 		rjmp	show_menu_key
 		
 		;repainting menu
-		m_lcd_set_fg	COLOR_DKRED	;set upper part (for menu name)
-		m_lcd_fill_rect	0,0,DISP_W,8
-		m_lcd_set_fg	COLOR_WHITE	;clear rest of screen
-		m_lcd_fill_rect	0,8,DISP_W,12*8
+		rcall	menu_bar_clear
 		
 		;submenu name
 		lds	temp,menu_item	;copy menu item for finding
@@ -418,10 +458,8 @@ show_menu_00:
 		brcc	show_menu_01
 		rjmp	show_menu_key	;if not found (error!), skip the rest
 show_menu_01:
-		m_lcd_set_bg	COLOR_DKRED
-		;m_lcd_set_fg	COLOR_WHITE
-		m_lcd_text_pos	0,0
-		rcall	lcd_text	;Z is set to next pos here
+		rcall	menu_bar_text
+		rcall	menu_body_clear
 		
 		;draw menu
 		m_lcd_text_pos	0,1		;set position of first menu item
@@ -457,7 +495,7 @@ show_menu_3:
 		
 		
 show_menu_key:	;key handling - menu navigation
-		andi	statush,~(1<<MENU_REDRAW)	;don't redraw menu again
+		andi	statush,~((1<<MENU_REDRAW)|(1<<MENU_CHANGED))	;don't redraw again
 		
 		;check for key press
 		lds	temp,keys
@@ -503,12 +541,14 @@ show_menu_key_esc:
 
 show_menu_key_enter:
 		rcall	menu_find_child
-		brcs	show_menu_key_e		;don't update if error/not found
-		sbiw	ZL,2			;get id
+		brcs	show_menu_key_en_1	;child not found = we are on leaf!
+		sbiw	ZL,2			;next menu item = child id
 		lpm	temp,Z
 		sts	menu_item,temp
-		ori	statush,(1<<MENU_CHANGED)
 		rjmp	show_menu_key_e
+show_menu_key_en_1:
+		ori	statush,(1<<MENU_CHANGED)|(1<<MENU_REDRAW)	;leaf
+		ret
 
 show_menu_key_e:
 		ori	statush,(1<<MENU_REDRAW)	;redraw menu
@@ -990,6 +1030,10 @@ eeprom_init:
 		;default values for status register
 		m_eeprom_read	ee_status
 		andi	temp,(1<<ADC_FILTER)|(1<<ADC_FILTER4)|(1<<PPM_POL)	;mask only runtime bits bits
+		mov	status,temp
+
+		m_eeprom_read	ee_statush
+		andi	temp,(1<<EXTENDER)|(1<<FMS_OUT)	;mask only runtime bits bits
 		mov	status,temp
 		
 		ret
