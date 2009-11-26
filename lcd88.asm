@@ -64,7 +64,9 @@
 ;		- small size optimization in menu
 ;		- addedd missing initialization of statush
 ;		- moved some common code in menu drawing to separate subroutines
-
+;		- moved storage common code out of model_find and trims_find to storage_*
+;		- added storage_find
+;		- trims_find rewriten (using storage_find)
 
 
 .nolist
@@ -384,22 +386,18 @@ main_loop:
 		sbrs	statush,MENU_CHANGED
 		rjmp	main_loop_xx
 		
-		;draw header 
+		;we are on the leaf
 		rcall	menu_bar_clear	;clear header
 		rcall	menu_copy_item	;draw name of choosen item
 		rcall	menu_find_item
 		rcall	menu_bar_text
 		rcall	menu_body_clear	;and clear body
-ml0:
-		lds	temp,keys	;wait for ESC
-		sbrs	temp,KEY_ESC
-		rjmp	ml0
-ml1:
-		lds	temp,keys	;wait for key release
-		tst	temp
-		brne	ml1
-
 main_loop_xx:
+
+		lds	temp,keys	;wait for ESC
+		sbrc	temp,KEY_ESC
+		ori	statush,(1<<MENU_REDRAW)
+
 		
 		rjmp	main_loop
 
@@ -547,7 +545,7 @@ show_menu_key_enter:
 		sts	menu_item,temp
 		rjmp	show_menu_key_e
 show_menu_key_en_1:
-		ori	statush,(1<<MENU_CHANGED)|(1<<MENU_REDRAW)	;leaf
+		ori	statush,(1<<MENU_CHANGED)	;leaf
 		ret
 
 show_menu_key_e:
@@ -1102,6 +1100,81 @@ eeprom_write_1:
 
 ;
 
+;
+; ########### storage management routines #############
+;
+
+
+;
+; get storage end from eeprom and store it in X
+; destroyed: temp
+storage_get_end:
+		m_eeprom_read	ee_storage_endl		;end of data in flash
+		mov	XL,temp
+		m_eeprom_read	ee_storage_endh
+		mov	XH,temp
+		ret
+;
+
+;
+; get beginning of storage
+storage_get_start:
+		ldi	ZL,low(storage_start<<1)	;start of flash
+		ldi	ZH,high(storage_start<<1)
+		ret
+;
+
+
+;
+; skip current container
+storage_skip_current:
+		adiw	ZL,1		;get block length
+		lpm	temp3,Z
+		tst	temp3		;just in case that block length=0 (corrupted data)
+		breq	storage_skip_current_ee
+		sbiw	ZL,1		;calculate next address
+		add	ZL,temp3	;add block length
+		adc	ZH,zero
+		cp	ZL,XL		;check if memory end
+		cpc	ZH,XH
+		brcc	storage_skip_current_ee
+		clc
+		ret
+storage_skip_current_ee:
+		sec	;error or end of storage
+		ret
+;
+
+
+;
+; find something in storage
+; params:
+;	temp:  value
+;	temp2: mask
+
+storage_find:
+		clr	WL		;prepare result
+		clr	WH
+		push	temp
+		rcall	storage_get_start
+		rcall	storage_get_end
+		pop	temp
+storage_find_1:
+		lpm	r0,Z		;get id
+		mov	r1,temp
+		and	r0,temp2	;clear unimportant bits
+		and	r1,temp2
+		cp	r0,r1
+		brne	storage_find_2
+		;found
+		movw	WL,ZL		;save Z
+storage_find_2:
+		rcall	storage_skip_current
+		brcc	storage_find_1
+		movw	ZL,WL		;restore last Z
+		ret
+;
+
 
 ;
 ; ########### model management routines ################
@@ -1149,12 +1222,8 @@ model_load:
 		sts	sequence,zero			;clear pointer to block processing sequence
 		sts	sequence+1,zero
 
-		ldi	ZL,low(storage_start<<1)	;start of flash
-		ldi	ZH,high(storage_start<<1)
-		m_eeprom_read	ee_storage_endl		;end of data in flash
-		mov	XL,temp
-		m_eeprom_read	ee_storage_endh
-		mov	XH,temp
+		rcall	storage_get_start
+		rcall	storage_get_end
 		lds	temp4,cur_model			;get model_id
 		
 model_load_1:
@@ -1167,16 +1236,8 @@ model_load_1:
 model_load_e:
 		;calculate next address and loop if not end of storage
 		movw	ZL,WL
-		adiw	ZL,1
-		lpm	temp3,Z
-		tst	temp3		;just in case that block length=0 (corrupted data)
-		breq	model_load_e1
-		movw	ZL,WL
-		add	ZL,temp3	;add block length
-		adc	ZH,zero
-		cp	ZL,XL		;check if memory end
-		cpc	ZH,XH
-		brcs	model_load_1
+		rcall	storage_skip_current
+		brcc	model_load_1
 		;end loading
 model_load_e1:
 		ori	status,(1<<ADC_ON)	;enable ADC
@@ -1272,70 +1333,20 @@ model_load_5_2:
 ; find data with sticks trims and copy pointer to 'trims' variable
 ; trims container have model_id=0, block type and block_id=0
 trims_find:
-		ldi	ZL,low(storage_start<<1)		;start of flash
-		ldi	ZH,high(storage_start<<1)
-		m_eeprom_read	ee_storage_endl		;end of data in flash
-		mov	XL,temp
-		m_eeprom_read	ee_storage_endh
-		mov	XH,temp
-
-trims_find_1:
-		movw	YL,ZL
-		lpm	temp,Z		;check block type
-		tst	temp
-		brne	trims_find_e
-		adiw	ZL,2
-		lpm	temp,Z		;check if block_id=0
-		tst	temp
-		brne	trims_find_e
-		;found trims block
-		movw	ZL,YL
+		ldi	temp,0		;look for block 0
+		ldi	temp2,0xff
+		rcall	storage_find
 		adiw	ZL,4		;trim data start = container_start+4
 		sts	trims,ZL
 		sts	trims+1,ZH	;then back to loop, only last container is valid
-trims_find_e:
-		;calculate next address and loop if not the end of storage
-		movw	ZL,YL
-		adiw	ZL,1
-		lpm	temp,Z
-		tst	temp		;just in case that block len=0
-		breq	trims_find_e1
-		movw	ZL,YL
-		add	ZL,temp		;add block length
-		adc	ZH,zero
-		cp	ZL,XL		;check if memory end
-		cpc	ZH,XH
-		brcs	trims_find_1
-trims_find_e1:
-.ifdef DEBUG
-		sts	find_debug_val,ZL
-		sts	find_debug_val+1,ZH
-		rcall	find_debug
-.dseg
-find_debug_val:	.byte	2
-.cseg
-.endif
 		ret
 ;
+
 
 
 ;
 ; ######### task for processing all values ###############
 task_calc:
-;		;copy input to output
-;		ldi	XL,low(channels)
-;		ldi	XH,high(channels)
-;		ldi	ZL,low(channels+32)
-;		ldi	ZH,high(channels+32)
-;		ldi	temp2,16
-;l1:
-;		ld	temp,X+
-;		st	Z+,temp
-;		dec	temp2
-;		brne	l1
-;		
-;		rjmp	task_calc_e
-		
 		;process block according to block processing order
 		lds	ZL,sequence	;get address of block containing processing sequence
 		lds	ZH,sequence+1
