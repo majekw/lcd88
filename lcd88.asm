@@ -382,6 +382,7 @@ main_loop:
 .endif
 
 		rcall	show_out_bars
+		sbrs	statush,MENU_CHANGED
 		rcall	show_menu
 		sbrs	statush,MENU_CHANGED
 		rjmp	main_loop_xx
@@ -397,6 +398,7 @@ main_loop_xx:
 		lds	temp,keys	;wait for ESC
 		sbrc	temp,KEY_ESC
 		ori	statush,(1<<MENU_REDRAW)
+		andi	statush,~(1<<MENU_CHANGED)
 
 		
 		rjmp	main_loop
@@ -1064,7 +1066,7 @@ eeprom_init_1:
 		ldi	temp,high(storage_end<<1)
 		rcall	eeprom_write
 		
-		;status register
+		;status registers
 		ldi	temp,(1<<ADC_FILTER)|(1<<PPM_POL)
 		mov	status,temp
 		m_eeprom_write	ee_status
