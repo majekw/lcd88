@@ -2394,7 +2394,7 @@ sequence:	.byte	2		;pointer to processing sequence block
 cur_model:		.byte	1	;current model
 trims:			.byte	2	;pointer to trims data
 model_name:		.byte	2	;pointer to model name
-;wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
+wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
 ;
 
 ; #

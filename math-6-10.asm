@@ -282,8 +282,8 @@ math_max_1:
 ;
 ; math stack
 .dseg
-math_stack:	.byte	10
 math_sp:	.byte	2
+math_stack:	.byte	10
 .cseg
 ;
 
