@@ -13,5 +13,11 @@ boot_start:
 ; destroyed: r0,r1,r17,r20,r24
 boot_block_write:
 
+.org	0x0f99
+; # make real spm
+; - Z, r0, r1 as for spm
+; - r20 - value to write to SPMCSR
+; destroyed: temp2 (r17)
+boot_spm:
 
 ;end
