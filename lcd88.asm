@@ -67,6 +67,17 @@
 ;		- moved storage common code out of model_find and trims_find to storage_*
 ;		- added storage_find
 ;		- trims_find rewriten (using storage_find)
+; 2010.05.28	- some comments
+;		- use PAGESIZE instead of hardcoded value
+
+;TODO
+; - stage 1
+;   - sticks calibration
+;   - backup/restore
+;   - model change
+;   - trims/reverse
+; - stage 2
+;   - rest...
 
 
 .nolist
@@ -363,9 +374,8 @@ reset_1:
 		sts	menu_item,temp
 		ori	statush,(1<<MENU_REDRAW)	;force redraw menu on first call
 
+
 		; #################### MAIN LOOP #####################
-
-
 main_loop:
 
 .ifdef DEBUG
@@ -505,7 +515,7 @@ show_menu_key:	;key handling - menu navigation
 
 		;wait for key release
 show_menu_key_1:
-		lds	temp2,keys		;this part blocks of drawing bars in real time
+		lds	temp2,keys		;this part blocks drawing bars in real time
 		tst	temp2
 		brne	show_menu_key_1
 		
@@ -2394,7 +2404,7 @@ sequence:	.byte	2		;pointer to processing sequence block
 cur_model:		.byte	1	;current model
 trims:			.byte	2	;pointer to trims data
 model_name:		.byte	2	;pointer to model name
-wr_tmp:		.byte	64	;buffer for flash write (2 pages for mega88)
+wr_tmp:		.byte	PAGESIZE*2	;buffer for flash write (2 pages for mega88)
 ;
 
 ; #
