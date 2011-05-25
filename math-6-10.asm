@@ -245,8 +245,8 @@ math_compare:
 ;
 ; substract
 math_sub:
-		rcall	math_compare
-		st	Y,mtemp1
+		rcall	math_compare	;it makes substract indeed but without storing result
+		st	Y,mtemp1	;store result
 		std	Y+1,mtemp2
 		adiw	YL,2
 		rcall	math_set_sp
@@ -275,6 +275,18 @@ math_max:
 math_max_1:
 		adiw	YL,2
 		rcall	math_set_sp
+		ret
+;
+
+;
+; division
+math_div:
+		rcall	math_sign_calc		;get sign
+
+
+		sbrc	statush,MATH_SIGN	;restore sign
+		rcall	math_neg
+
 		ret
 ;
 
