@@ -4,11 +4,8 @@
 ; Changelog:
 ; 2007.11.16	- first code
 ; 2007.11.17	- xmodem and flash programming done
-; 2007.11.18	- decrypting
 ; 2007.11.23	- fixed hang when there is a constant stream of data coming from rs
 ;		- removed other options, corrected banners
-;		- changed a little decrypting algoryth
-; 2007.11.24	- final changes in decryption algo
 ; 2009.05.31	- modified to suit atmega88
 ; 2011.11.11	- use SRAM_START from device definition instead of harcoding
 
