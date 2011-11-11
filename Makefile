@@ -9,6 +9,7 @@ install:
 
 bootloader:
 	avra bootloader.asm -l bootloader.lst
+	sh makeinclude.sh bootloader.lst bootloader.inc
 	cat bootloader.hex|./ihex2bin >bootloader.bin
 	lsz -X -vvvvv -b bootloader.bin >/dev/ttyUSB0 </dev/ttyUSB0
 

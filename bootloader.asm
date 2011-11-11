@@ -10,6 +10,7 @@
 ;		- changed a little decrypting algoryth
 ; 2007.11.24	- final changes in decryption algo
 ; 2009.05.31	- modified to suit atmega88
+; 2011.11.11	- use SRAM_START from device definition instead of harcoding
 
 
 .include "m88def.inc"
@@ -32,8 +33,8 @@
 
 .equ	ZEGAR=11059200			;CLK
 ;.equ	ZEGAR=7372800
-.equ	RAM_START=0x100			;ram start
-.equ	REC_BUF=RAM_START		;receive buffer
+;.equ	RAM_START=0x100			;ram start
+.equ	REC_BUF=SRAM_START		;receive buffer
 .equ	WRITE_BUF=REC_BUF+256		;write buffer
 .equ	boot_rx_timeout=ZEGAR/641	;wait about 2s for char from UART
 
@@ -96,7 +97,8 @@ boot_wait:
 		cpi	temp,'B'	;B?
 		brne	boot_end	;no second chance
 		
-boot_menu:	;menu
+		;menu
+boot_menu:
 		ldi	ZL,low(boot_banner3<<1)
 		ldi	ZH,high(boot_banner3<<1)
 		rcall	boot_print
