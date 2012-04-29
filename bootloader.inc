@@ -1,4 +1,4 @@
-; Include file generated from bootloader.lst at Fri Nov 11 19:40:04 CET 2011
+; Include file generated from bootloader.lst at Sat Nov 12 01:13:38 CET 2011
 .cseg
 .org	0x000f00
 boot_start:
@@ -60,6 +60,9 @@ boot_block_write:
 .org	0x000f84
 boot_block_write1:
 
+.org	0x000f8c
+boot_write_page:
+
 .org	0x000f99
 boot_spm:
 
@@ -69,6 +72,6 @@ boot_banner1:
 .org	0x000FCC
 boot_banner2:
 
-.org	0x000FD9
+.org	0x000FD3
 boot_banner3:
 

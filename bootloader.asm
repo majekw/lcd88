@@ -1,5 +1,5 @@
 ; Bootloader
-; (C) 2007 Marek Wodzinski
+; (C) 2007-2011 Marek Wodzinski
 ;
 ; Changelog:
 ; 2007.11.16	- first code
@@ -268,7 +268,7 @@ boot_block_write1:
 		subi	temp,2
 		dec	looplo
 		brne	boot_block_write1
-		
+boot_write_page:
 		;write page from buffer to FLASH
 		subi	ZL,(PAGESIZE<<1)		;step back
 		sbci	ZH,0
@@ -309,6 +309,6 @@ boot_banner1:
 		.db	13,10,"Bootloader v.1.2 (C) Marek Wodzinski",13,10
 		.db	"Press B for options or wait 2s for normal boot.",13,10,0
 boot_banner2:
-		.db	"timed out... booting...",13,10,0
+		.db	"booting....",13,10,0
 boot_banner3:
 		.db	"Press P for firmware update (XMODEM) or any other key to continue booting",13,10,0
