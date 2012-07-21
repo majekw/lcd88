@@ -360,7 +360,7 @@ reset_1:
 
 		rcall	trims_find		;find trim data for sticks
 		
-		ldi	temp,2			;HACK
+		ldi	temp,3			;HACK
 		sts	cur_model,temp
 		rcall	model_load		;load last used model
 
@@ -954,7 +954,7 @@ lcd_initialize:
 		m_lcd_set_bg	COLOR_WHITE	;set default colors
 		m_lcd_set_fg	COLOR_BLACK
 		ret
-banner:		.db	"(C) 2007-2009 Marek Wodzinski",0
+banner:		.db	"(C) 2007-2012 Marek Wodzinski",0
 ;
 
 
