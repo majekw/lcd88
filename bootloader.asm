@@ -10,7 +10,12 @@
 ; 2011.11.11	- use SRAM_START from device definition instead of harcoding
 
 
+.ifndef M168
 .include "m88def.inc"
+.else
+.include "m168def.inc"
+.endif
+
 
 .ifndef temp
 .def	temp=r16
@@ -28,12 +33,12 @@
 .def	loophi=r25
 
 
-.equ	ZEGAR=11059200			;CLK
-;.equ	ZEGAR=7372800
+.equ	F_CPU=11059200			;CLK
+;.equ	F_CPU=7372800
 ;.equ	RAM_START=0x100			;ram start
 .equ	REC_BUF=SRAM_START		;receive buffer
 .equ	WRITE_BUF=REC_BUF+256		;write buffer
-.equ	boot_rx_timeout=ZEGAR/641	;wait about 2s for char from UART
+.equ	boot_rx_timeout=F_CPU/641	;wait about 2s for char from UART
 
 .equ	xmodem_SOH=0x01			;xmodem definitions
 .equ	xmodem_EOT=0x04
@@ -44,8 +49,6 @@
 
 
 .cseg
-.org	0
-reset:
 
 .org	SECONDBOOTSTART
 boot_start:
@@ -183,7 +186,9 @@ boot_end:
 		ldi	ZH,high(boot_banner2<<1)
 		rcall	boot_print
 		
-		rjmp	reset		;end of bootloader
+		clr	ZL
+		clr	ZH
+		ijmp		;end of bootloader - jump to 0
 
 
 ;

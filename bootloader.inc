@@ -1,4 +1,4 @@
-; Include file generated from bootloader.lst at Sat Nov 12 01:13:38 CET 2011
+; Include file generated from bootloader.lst at Thu Sep 13 00:04:22 CEST 2012
 .cseg
 .org	0x000f00
 boot_start:
@@ -33,45 +33,45 @@ xmodem_end:
 .org	0x000f5b
 boot_end:
 
-.org	0x000f5f
+.org	0x000f61
 boot_print:
 
-.org	0x000f64
+.org	0x000f66
 boot_print1:
 
-.org	0x000f65
+.org	0x000f67
 boot_tx_char:
 
-.org	0x000f6c
+.org	0x000f6e
 boot_rx_char:
 
-.org	0x000f70
+.org	0x000f72
 boot_rx_char1:
 
-.org	0x000f7a
+.org	0x000f7c
 boot_rx_char2:
 
-.org	0x000f7d
+.org	0x000f7f
 boot_rx_char3:
 
-.org	0x000f7f
+.org	0x000f81
 boot_block_write:
 
-.org	0x000f84
+.org	0x000f86
 boot_block_write1:
 
-.org	0x000f8c
+.org	0x000f8e
 boot_write_page:
 
-.org	0x000f99
+.org	0x000f9b
 boot_spm:
 
-.org	0x000F9F
+.org	0x000FA1
 boot_banner1:
 
-.org	0x000FCC
+.org	0x000FCE
 boot_banner2:
 
-.org	0x000FD3
+.org	0x000FD5
 boot_banner3:
 
