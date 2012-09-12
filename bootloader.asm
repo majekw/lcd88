@@ -8,6 +8,7 @@
 ;		- removed other options, corrected banners
 ; 2009.05.31	- modified to suit atmega88
 ; 2011.11.11	- use SRAM_START from device definition instead of harcoding
+; 2012.09.13	- small change to compile on both Mega88 and Mega168
 
 
 .ifndef M168

@@ -69,6 +69,7 @@
 ;		- trims_find rewriten (using storage_find)
 ; 2010.05.28	- some comments
 ;		- use PAGESIZE instead of hardcoded value
+; 2012.09.13	- porting to run on both Mega88 and Mega168
 
 ;TODO
 ; - stage 1
@@ -81,7 +82,13 @@
 
 
 .nolist
-.include "m88def.inc"		;standard header for atmega88
+;standard header for atmega88 or mega168
+.ifndef M168
+.include "m88def.inc"
+.else
+.include "m168def.inc"
+.endif
+
 
 ;.define DEBUG
 
@@ -2388,7 +2395,7 @@ storage_end:
 ;.include "version.inc"		;include svn version as firmware version
 
 ; ####### BOOTLOADER HEADER (include boot_block_write sub) ######
-.org	0x0f00
+.org	SECONDBOOTSTART
 flash_end:
 .include "bootloader.inc"	;needed for flash reprogramming
 

@@ -1,6 +1,6 @@
 # uncomment right device
-DEVICE	?= M88
-#DEVICE	?= M168
+#DEVICE	?= M88
+DEVICE	?= M168
 
 #assembler
 ASM	:= avra
@@ -9,7 +9,7 @@ compile: lcd88.hex
 
 bootloader: bootloader.hex
 
-lcd88.hex: bootloader.inc
+lcd88.hex: bootloader.inc lcd88.asm
 	$(ASM) lcd88.asm -l lcd88.lst
 
 
