@@ -11,7 +11,7 @@ if [ -f $2 ]; then
     mv $2 $2.$(date +%s)
 fi
 
-echo "; Include file generated from $1 at $(date)" >$2
+echo "; Include file generated from $1 dated $(date -r $1)" >$2
 echo ".cseg" >>$2
 
 for label in $(cat $1|egrep "^[[:blank:]]+[[:alnum:]_]+:"|tr -d "[:blank:]"|grep -v "reset:"); do
