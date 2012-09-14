@@ -2366,6 +2366,8 @@ task_space:	.byte	26
 ; ###############    FLASH   D A T A    ######################
 ; ############################################################
 ; #
+; For storage structure see comments at the beginning of models.asm
+;
 storage_start:
 		.db	0,84,0,0	;header
 ch_trims:	.dw	0x01FF		;center position for channel 0
@@ -2380,7 +2382,7 @@ ch_trims:	.dw	0x01FF		;center position for channel 0
 		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 6
 		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 7
 
-; ####### INCLUDE BASIC MODEL DEFINITIONS #############
+; ####### INCLUDE HARDCODED MODEL DEFINITIONS #############
 .include "models.asm"
 storage_end:
 		.dw	0xffff
