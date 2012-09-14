@@ -1,6 +1,6 @@
 # uncomment right device
-#DEVICE	?= M88
-DEVICE	?= M168
+DEVICE	?= M88
+#DEVICE	?= M168
 
 #assembler
 ASM	:= avra
@@ -10,7 +10,7 @@ compile: lcd88.hex
 bootloader: bootloader.hex
 
 lcd88.hex: bootloader.inc lcd88.asm
-	$(ASM) lcd88.asm -l lcd88.lst
+	$(ASM) --define $(DEVICE) lcd88.asm -l lcd88.lst
 
 
 install: lcd88.hex
@@ -30,10 +30,5 @@ bootloader_install:
 .PHONY: clean
 
 clean:
-	rm -f *.hex *.epp *.obj *.lst *.cof *.bin *.inc.*
-
-.PHONY: distclean
-
-distclean: clean
-	rm -f bootloader.inc
+	rm -f *.hex *.epp *.obj *.lst *.cof *.bin *.inc.* bootloader.inc
 

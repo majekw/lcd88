@@ -83,7 +83,8 @@
 
 .nolist
 ;standard header for atmega88 or mega168
-.ifndef M168
+
+.ifdef M88
 .include "m88def.inc"
 .else
 .include "m168def.inc"
@@ -270,9 +271,12 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 		reti		;Two wire serial interface
 		reti		;SPM ready
 
-
-; # LCD code
+;
+; #################### LCD CODE ###############
+; # it should be here because of some macros defined inside :-(
 .include	"lcd-s65.asm"
+;
+
 
 ; # main program
 reset:
@@ -1556,6 +1560,7 @@ math_pop_channel:
 
 
 
+
 ; #####################  DEBUG ROUTINES ############################
 ;
 ; # wyswietla wartosci z bajtow klawiatury
@@ -2410,10 +2415,10 @@ flash_end:
 channels:	.byte	CHANNELS_MAX*2	;memory for channel values
 blocks:		.byte	BLOCKS_MAX*2	;pointers to blocks
 sequence:	.byte	2		;pointer to processing sequence block
-cur_model:		.byte	1	;current model
-trims:			.byte	2	;pointer to trims data
-model_name:		.byte	2	;pointer to model name
-wr_tmp:		.byte	PAGESIZE*2	;buffer for flash write (2 pages for mega88)
+cur_model:	.byte	1		;current model
+trims:		.byte	2		;pointer to trims data
+model_name:	.byte	2		;pointer to model name
+wr_tmp:		.byte	PAGESIZE*2	;buffer for flash write (pagesize is in words, so 2x for bytes!)
 ;
 
 ; #

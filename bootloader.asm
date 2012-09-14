@@ -9,9 +9,10 @@
 ; 2009.05.31	- modified to suit atmega88
 ; 2011.11.11	- use SRAM_START from device definition instead of harcoding
 ; 2012.09.13	- small change to compile on both Mega88 and Mega168
+; 2012.09.14	- fix for PAGESIZE on Atmega168/328
 
 
-.ifndef M168
+.ifdef M88
 .include "m88def.inc"
 .else
 .include "m168def.inc"
@@ -251,9 +252,11 @@ boot_rx_char3:
 
 ;
 ; # write blocks to flash
-; - Z : flash address
+; - Z : flash address (bytes)
 ; - Y : ram address
 ; - temp : number of bytes to write
+; modified after run:
+;  - r0, r1, spmcrval (r20), looplo (r24), temp2
 boot_block_write:
 		;page erase
 		ldi	spmcrval,(1<<PGERS)+(1<<SELFPRGEN)
@@ -276,14 +279,14 @@ boot_block_write1:
 		brne	boot_block_write1
 boot_write_page:
 		;write page from buffer to FLASH
-		subi	ZL,(PAGESIZE<<1)		;step back
-		sbci	ZH,0
+		subi	ZL,low(PAGESIZE<<1)		;step back
+		sbci	ZH,high(PAGESIZE<<1)
 		ldi	spmcrval,(1<<PGWRT)+(1<<SELFPRGEN)	;write page
 		rcall	boot_spm
-		ldi	spmcrval,(PAGESIZE<<1)
-		add	ZL,spmcrval	;restore Z
-		ldi	spmcrval,0	;temporary
-		adc	ZH,spmcrval	;for adding only carry
+		ldi	temp2,low(PAGESIZE<<1)
+		add	ZL,temp2	;restore Z
+		ldi	temp2,high(PAGESIZE<<1)
+		adc	ZH,temp2
 		
 		;reenable RWW section
 		ldi	spmcrval,(1<<RWWSRE)+(1<<SELFPRGEN)
