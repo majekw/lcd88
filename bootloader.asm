@@ -256,7 +256,7 @@ boot_rx_char3:
 ; - Y : ram address
 ; - temp : number of bytes to write
 ; modified after run:
-;  - r0, r1, spmcrval (r20), looplo (r24), temp2
+;  - r0, r1, spmcrval (r20), looplo (r24), temp (r16), temp2 (r17)
 boot_block_write:
 		;page erase
 		ldi	spmcrval,(1<<PGERS)+(1<<SELFPRGEN)
