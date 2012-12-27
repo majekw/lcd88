@@ -70,6 +70,7 @@
 ; 2010.05.28	- some comments
 ;		- use PAGESIZE instead of hardcoded value
 ; 2012.09.13	- porting to run on both Mega88 and Mega168
+; 2012.12.27	- fix interrupt table for Mega168/328
 
 ;TODO
 ; - stage 1
@@ -220,6 +221,11 @@
 		in	temp,EEDR
 .endmacro
 
+;reti but occupying 2 words (M168/328)
+.macro		m_reti
+		reti
+		nop
+.endmacro
 ;
 ; #
 ; #############################
@@ -244,6 +250,7 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 .list
 .cseg					;CODE segment
 .org 0
+.ifdef M88
 		rjmp	reset	;RESET
 		reti		;INT0
 		reti		;INT1
@@ -270,6 +277,34 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 		reti		;Analog comparator
 		reti		;Two wire serial interface
 		reti		;SPM ready
+.else
+		jmp	reset	;RESET
+		m_reti		;INT0
+		m_reti		;INT1
+		m_reti		;PCINT0
+		m_reti		;PCINT1
+		m_reti		;PCINT2
+		m_reti		;WDT
+		jmp	t2cm	;Timer2 Compare Match A
+		m_reti		;Timer2 Compare Match B
+		m_reti		;Timer2 Overflow
+		m_reti		;Timer1 Capture
+		m_reti		;Timer1 CompareA
+		jmp	t1cm	;Timer1 CompareB
+		m_reti		;Timer1 Overflow
+		m_reti		;Timer0 Compare MAtch A
+		m_reti		;Timer0 Compare Match B
+		m_reti		;Timer0 Overflow
+		m_reti		;SPI transfer complete
+		m_reti		;USART RX complete
+		m_reti		;USART data register empty (UDRE)
+		m_reti		;USART TX complete
+		jmp	adcc	;ADC conversion complete
+		m_reti		;EEPROM ready
+		m_reti		;Analog comparator
+		m_reti		;Two wire serial interface
+		m_reti		;SPM ready
+.endif
 
 ;
 ; #################### LCD CODE ###############
