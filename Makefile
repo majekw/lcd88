@@ -1,7 +1,7 @@
 # uncomment right device
-#DEVICE	?= M88
+DEVICE	?= M88
 #DEVICE	?= M168
-DEVICE  ?= M328
+#DEVICE  ?= M328
 #assembler
 ASM	:= avra
 
@@ -9,7 +9,7 @@ compile: lcd88.hex
 
 bootloader: bootloader.hex
 
-lcd88.hex: bootloader.inc lcd88.asm
+lcd88.hex: bootloader.inc lcd88.asm lcd-s65.asm lcd-s65-ls020.asm lcd-s65-l2f50.asm
 	$(ASM) --define $(DEVICE) lcd88.asm -l lcd88.lst
 
 
@@ -24,8 +24,7 @@ bootloader.inc: bootloader.lst
 	sh makeinclude.sh bootloader.lst bootloader.inc
 
 bootloader_install:
-	cat bootloader.hex|./ihex2bin >bootloader.bin
-	lsz -X -vvvvv -b bootloader.bin >/dev/ttyUSB0 </dev/ttyUSB0
+	avrdude -c usbasp -p$(DEVICE) -U flash:w:bootloader.hex
 
 .PHONY: clean
 
