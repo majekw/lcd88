@@ -1,5 +1,5 @@
 ; Bootloader
-; (C) 2007-2011 Marek Wodzinski
+; (C) 2007-2012 Marek Wodzinski
 ;
 ; Changelog:
 ; 2007.11.16	- first code
@@ -10,6 +10,8 @@
 ; 2011.11.11	- use SRAM_START from device definition instead of harcoding
 ; 2012.09.13	- small change to compile on both Mega88 and Mega168
 ; 2012.09.14	- fix for PAGESIZE on Atmega168/328
+; 2012.12.27	- run bootloader code only after external reset
+;		- changed order of programming steps from erase-fill-write to fill-erase-write
 
 
 .ifdef M88
@@ -57,6 +59,13 @@ boot_start:
 		;disable interrupts
 		cli
 		
+		;check reason of reset
+		in	temp,MCUSR	;get reset flags
+		clr	temp3		;zero
+		out	MCUSR,temp2	;clear status register
+		sbrs	temp,EXTRF	;check if external reset occured?
+		rjmp	boot_jump0	;if not, just reboot
+		
 		;initialize stack
 		ldi	temp,low(RAMEND)
 		out	SPL,temp
@@ -68,8 +77,8 @@ boot_start:
 		sbi	PORTD,PORTD0	;rx: pull up
 		sbi	DDRD,PORTD1	;tx: output
 		
-		ldi	temp,0		;no x2 speed, no multiprocessor comm.
-		sts	UCSR0A,temp
+		;ldi	temp,0		;no x2 speed, no multiprocessor comm.
+		sts	UCSR0A,temp3
 		
 		ldi	temp,(1<<RXEN0)+(1<<TXEN0)	;enable rx and tx
 		sts	UCSR0B,temp
@@ -77,8 +86,8 @@ boot_start:
 		ldi	temp,(1<<UCSZ01)+(1<<UCSZ00)	;8 bit
 		sts	UCSR0C,temp
 		
-		ldi	temp,0
-		sts	UBRR0H,temp
+		;ldi	temp,0
+		sts	UBRR0H,temp3
 		ldi	temp,71		;speed: 9600 (47 for 7.3728, 51 for 8M, 71 for 11.0592M)
 		sts	UBRR0L,temp
 		
@@ -188,7 +197,7 @@ boot_end:
 		ldi	ZH,high(boot_banner2<<1)
 		rcall	boot_print
 		
-		clr	ZL
+boot_jump0:	clr	ZL
 		clr	ZH
 		ijmp		;end of bootloader - jump to 0
 
@@ -256,35 +265,53 @@ boot_rx_char3:
 ; - Y : ram address
 ; - temp : number of bytes to write
 ; modified after run:
-;  - r0, r1, spmcrval (r20), looplo (r24), temp (r16), temp2 (r17)
+;  - r0, r1, spmcrval (r20), looplo (r24), temp (r16), temp2 (r17), Z, Y
 boot_block_write:
+
+; # fill buffer with data
+boot_fill_page:
+		;transfer data from RAM to FLASH buffer
+		ldi	looplo,PAGESIZE	;number of WORDS in page to write
+boot_fill_page1:
+		ld	r0,Y+		;get word from ram
+		ld	r1,Y+
+		ldi	spmcrval,(1<<SELFPRGEN)	;write word to buffer
+		rcall	boot_spm
+		adiw	ZL,2		;next flash address
+		subi	temp,2		;2 bytes written
+		dec	looplo		;whole page written?
+		brne	boot_fill_page1
+
+		;restore Z to point correct page
+		subi	ZL,low(PAGESIZE<<1)
+		sbci	ZH,high(PAGESIZE<<1)
+		
+; # erase page
+; - Z : flash address (bytes)
+; - temp : use 0 for one page
+; modified after run:
+;  - spmcrval (r20), temp2 (r17), Z
+boot_erase_page:
 		;page erase
 		ldi	spmcrval,(1<<PGERS)+(1<<SELFPRGEN)
 		rcall	boot_spm
 		
-		;reenable RWW section
-		ldi	spmcrval,(1<<RWWSRE)+(1<<SELFPRGEN)
-		rcall	boot_spm
-		
-		;transfer data from RAM to FLASH buffer
-		ldi	looplo,PAGESIZE	;number of WORDS in page to write
-boot_block_write1:
-		ld	r0,Y+
-		ld	r1,Y+
-		ldi	spmcrval,(1<<SELFPRGEN)
-		rcall	boot_spm
-		adiw	ZL,2
-		subi	temp,2
-		dec	looplo
-		brne	boot_block_write1
+		;reenable RWW section (it also erases temporary buffer!)
+		;ldi	spmcrval,(1<<RWWSRE)+(1<<SELFPRGEN)
+		;rcall	boot_spm
+
+; # write page
+; - Z : flash address (bytes)
+; - temp : use 0 for one page
+; modified after run:
+;  - spmcrval (r20), temp2 (r17), Z
 boot_write_page:
-		;write page from buffer to FLASH
-		subi	ZL,low(PAGESIZE<<1)		;step back
-		sbci	ZH,high(PAGESIZE<<1)
 		ldi	spmcrval,(1<<PGWRT)+(1<<SELFPRGEN)	;write page
 		rcall	boot_spm
+		
+		;calculate next page address
 		ldi	temp2,low(PAGESIZE<<1)
-		add	ZL,temp2	;restore Z
+		add	ZL,temp2
 		ldi	temp2,high(PAGESIZE<<1)
 		adc	ZH,temp2
 		
@@ -315,7 +342,7 @@ boot_spm:
 ; ########## static data ###########
 ; #		
 boot_banner1:
-		.db	13,10,"Bootloader v.1.2 (C) Marek Wodzinski",13,10
+		.db	13,10,"Bootloader v.1.3 (C) Marek Wodzinski",13,10
 		.db	"Press B for options or wait 2s for normal boot.",13,10,0
 boot_banner2:
 		.db	"booting....",13,10,0
