@@ -1,5 +1,5 @@
 ; Fixed point math library: 6.10
-; (C) 2009 Marek Wodzinski majek@mamy.to
+; (C) 2009-2012 Marek Wodzinski majek@mamy.to
 ;
 ; Changelog:
 ; 2009.08.16	- start coding:
@@ -21,7 +21,8 @@
 ;		- math_sub
 ;		- math_min
 ;		- math_max
-
+; 2012.12.27	- math_push
+;		- math_drop
 
 ;
 ; initialize math stack pointer
@@ -287,6 +288,28 @@ math_div:
 		sbrc	statush,MATH_SIGN	;restore sign
 		rcall	math_neg
 
+		ret
+;
+
+;
+; push number on the stack
+; mtemp1, mtemp2 - argument
+math_push:
+		rcall	math_get_sp
+		adiw	YL,2
+		rcall	math_set_sp
+		sbiw	YL,2
+		st	Y+,mtemp1
+		st	Y+,mtemp2
+		ret
+;
+
+;
+; drop last operand from the stack
+math_drop:
+		rcall	math_get_sp
+		sbiw	YL,2
+		rcall	math_set_sp
 		ret
 ;
 
