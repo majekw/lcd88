@@ -71,6 +71,7 @@
 ;		- use PAGESIZE instead of hardcoded value
 ; 2012.09.13	- porting to run on both Mega88 and Mega168
 ; 2012.12.27	- fix interrupt table for Mega168/328
+;		- added support for Atmega328
 
 ;TODO
 ; - stage 1
@@ -86,9 +87,17 @@
 ;standard header for atmega88 or mega168
 
 .ifdef M88
-.include "m88def.inc"
+    .include "m88def.inc"
 .else
-.include "m168def.inc"
+    .ifdef M168
+	.include "m168def.inc"
+    .else
+	.ifdef M328
+	    .include "m328def.inc"
+	.else
+	    .error "No processor defined!"
+	.endif
+    .endif
 .endif
 
 
@@ -2437,7 +2446,11 @@ storage_end:
 ;.include "version.inc"		;include svn version as firmware version
 
 ; ####### BOOTLOADER HEADER (include boot_block_write sub) ######
-.org	SECONDBOOTSTART
+.ifdef	M328
+    .org	FIRSTBOOTSTART
+.else
+    .org	SECONDBOOTSTART
+.endif
 flash_end:
 .include "bootloader.inc"	;needed for flash reprogramming
 

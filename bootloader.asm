@@ -12,12 +12,20 @@
 ; 2012.09.14	- fix for PAGESIZE on Atmega168/328
 ; 2012.12.27	- run bootloader code only after external reset
 ;		- changed order of programming steps from erase-fill-write to fill-erase-write
-
+;		- added support for Atmega328
 
 .ifdef M88
-.include "m88def.inc"
+    .include "m88def.inc"
 .else
-.include "m168def.inc"
+    .ifdef M168
+	.include "m168def.inc"
+    .else
+	.ifdef M328
+	    .include "m328def.inc"
+	.else
+	    .error "No processor defined!"
+	.endif
+    .endif
 .endif
 
 
@@ -54,7 +62,12 @@
 
 .cseg
 
-.org	SECONDBOOTSTART
+.ifdef	M328
+    .org	FIRSTBOOTSTART
+.else
+    .org	SECONDBOOTSTART
+.endif
+
 boot_start:
 		;disable interrupts
 		cli

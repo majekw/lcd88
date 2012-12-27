@@ -1,7 +1,7 @@
 # uncomment right device
-DEVICE	?= M88
+#DEVICE	?= M88
 #DEVICE	?= M168
-
+DEVICE  ?= M328
 #assembler
 ASM	:= avra
 
