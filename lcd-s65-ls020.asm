@@ -12,6 +12,7 @@
 ; 2009.06.09	- fix assume that spi_tx doesn't destroy temp (broken after
 ;		  porting to mega88)
 ; 2009.06.10	- added rotated coordinates (based on global lcd_rotate)
+; 2012.12.27    - workaround bug in avra .ifndef
 
 ; commands definitions
 .define		orient_normal		; normal orientation
@@ -112,35 +113,8 @@ lcd_set_area:
 		sbi	LCD_PORT_RS,LCD_RS	;command
 		m_lcd_cmd_const	lcd_memwr,8
 
-.ifndef lcd_rotated		;normal
-		ldi	temp,0x08		;x1
-		rcall	spi_tx
-		lds	temp,lcd_arg1
-		rcall	spi_tx
-		
-		lds	temp2,lcd_arg3		;x2=x1+dx-1
-		lds	temp,lcd_arg1
-		add	temp2,temp
-		dec	temp2
-		ldi	temp,0x09
-		rcall	spi_tx
-		mov	temp,temp2
-		rcall	spi_tx
-		
-		ldi	temp,0x0A		;y1
-		rcall	spi_tx
-		lds	temp,lcd_arg2
-		rcall	spi_tx
-		
-		lds	temp2,lcd_arg4		;y2=y1+dy-1
-		lds	temp,lcd_arg2
-		add	temp2,temp
-		dec	temp2
-		ldi	temp,0x0B
-		rcall	spi_tx
-		mov	temp,temp2
-		rcall	spi_tx
-.else		;rotated
+.ifdef lcd_rotated
+		;rotated
 		ldi	temp,0x08		;x1
 		rcall	spi_tx
 		ldi	temp,DISP_H		;x1=DISP_H-y-dy
@@ -168,6 +142,35 @@ lcd_set_area:
 		lds	temp,lcd_arg3
 		add	temp,temp2
 		dec	temp
+		rcall	spi_tx
+.else
+		;normal
+		ldi	temp,0x08		;x1
+		rcall	spi_tx
+		lds	temp,lcd_arg1
+		rcall	spi_tx
+		
+		lds	temp2,lcd_arg3		;x2=x1+dx-1
+		lds	temp,lcd_arg1
+		add	temp2,temp
+		dec	temp2
+		ldi	temp,0x09
+		rcall	spi_tx
+		mov	temp,temp2
+		rcall	spi_tx
+		
+		ldi	temp,0x0A		;y1
+		rcall	spi_tx
+		lds	temp,lcd_arg2
+		rcall	spi_tx
+		
+		lds	temp2,lcd_arg4		;y2=y1+dy-1
+		lds	temp,lcd_arg2
+		add	temp2,temp
+		dec	temp2
+		ldi	temp,0x0B
+		rcall	spi_tx
+		mov	temp,temp2
 		rcall	spi_tx
 .endif
 		cbi	LCD_PORT_RS,LCD_RS	;data

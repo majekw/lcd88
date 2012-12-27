@@ -20,7 +20,7 @@
 ; 2007.12.17	- made text routines optional
 ; 2009.06.08	- changed spi_tx to work on mega88
 ; 2009.11.20	- small comment
-
+; 2012.12.27	- workaround bug in avra .ifndef
 
 ; ##### CONFIG FEATURES ####################################
 ; #
@@ -68,18 +68,18 @@
 .equ		CHAR_W=8
 ;.equ		CHAR_H=5
 ;.equ		CHAR_W=7
-.ifndef lcd_rotated
-.equ		DISP_W=132
-.equ		DISP_H=176
-.equ		TEXT_COL=16
-.equ		TEXT_ROW=22
-.else
+.ifdef lcd_rotated
 .equ		DISP_W=176
 .equ		DISP_H=132
 .equ		TEXT_COL=22
 .equ		TEXT_ROW=16
 ;.equ		TEXT_COL=35
 ;.equ		TEXT_ROW=18
+.else
+.equ		DISP_W=132
+.equ		DISP_H=176
+.equ		TEXT_COL=16
+.equ		TEXT_ROW=22
 .endif
 
 ; colors
@@ -305,7 +305,9 @@ lcd_helo:	.db	"AVRGPS 2.0",0,0
 ;
 ; # konfiguracja SPI dla LCD
 lcd_spi_init:
-.ifndef soft_spi
+.ifdef soft_spi
+		;software spi - nothing to do
+.else
 		;hardware spi
                 ldi     temp,(1<<SPE)|(1<<MSTR)	;spi en,master,podzielnik /4 (CLK!)
 		out     SPCR,temp
@@ -313,8 +315,6 @@ lcd_spi_init:
 		;mov	temp,zero
 		out     SPSR,temp
 		in	temp,SPSR	;just in case
-.else
-		;software spi - nothing to do
 .endif
 		ret
 ;
@@ -343,13 +343,7 @@ lcd_port_init:
 ;
 ; #wy¶lij i co¶ po SPI, argumenty w temp
 spi_tx:
-.ifndef soft_spi
-		;hardware spi
-		out	SPDR,temp	; send over SPI		;2
-spi_tx1:	in	temp,SPSR
-		sbrs	temp,SPIF	; wait for empty SPDR	;2
-		rjmp	spi_tx1					;2
-.else
+.ifdef soft_spi
 		;software spi
 		push	temp			;2
 		push	temp2			;2
@@ -367,6 +361,12 @@ spi_tx1:
 						;=13, f=615kHz :-(
 		pop	temp2			;2
 		pop	temp			;2
+.else
+		;hardware spi
+		out	SPDR,temp	; send over SPI		;2
+spi_tx1:	in	temp,SPSR
+		sbrs	temp,SPIF	; wait for empty SPDR	;2
+		rjmp	spi_tx1					;2
 .endif
                 ret			; done	;4+3    =67KB/s
 ;
@@ -491,10 +491,10 @@ lcd_char1:
 		ldi	temp,CHAR_W
 		mov	temp4,temp
 lcd_char2:
-.ifndef lcd_rotated
-		rol	r0
-.else
+.ifdef lcd_rotated
 		lsr	r0
+.else
+		rol	r0
 .endif
 		brcc	lcd_char3	;0 czy 1?
 		lds	temp,lcd_fg_color+1	;color high byte
@@ -568,11 +568,11 @@ lcd_text_ram:
 ;
 
 lcd_font:
-.ifndef lcd_rotated
-.include	"font_8x8.inc"
+.ifdef lcd_rotated
+    .include	"font_8x8r.inc"
+    ;.include	"font_5x7_small.inc"
 .else
-.include	"font_8x8r.inc"
-;.include	"font_5x7_small.inc"
+    .include	"font_8x8.inc"
 .endif
 
 .endif
