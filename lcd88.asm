@@ -72,6 +72,8 @@
 ; 2012.09.13	- porting to run on both Mega88 and Mega168
 ; 2012.12.27	- fix interrupt table for Mega168/328
 ;		- added support for Atmega328
+;		- some changes in math code
+;		- calculation of digital input
 
 ;TODO
 ; - stage 1
@@ -1492,6 +1494,17 @@ task_calc_e:
 		rjmp	task_switch_to_main	;end of this task
 		
 		;calculating... W=address of block for processing
+
+task_calc_limit:
+task_calc_mux:
+task_calc_det:
+task_calc_min:
+task_calc_max:
+task_calc_delta:
+task_calc_sub:
+task_calc_compare:
+task_calc_abs:
+		rjmp	task_calc_99
 ; 0 - block
 ;	model_id+(deleted<<5)+(0<<6)
 ;	length = block specific
@@ -1506,7 +1519,24 @@ task_calc_e:
 ;	output1
 ;	output2
 ;	...
+; types of blocks:		inputs	outputs	input types	remark
+; * 1 - trim			2	1	(in+trim)	=adder but special treatment of trim input
+; * 2 - reverse			2	1	(in+reverse)	=multiplier but a.a.
+;   3 - limit			3	1	(in+min+max)
+; * 4 - multiplier		2	1	(2x in)		X=A*B
+; * 5 - digital input		1	1	(in)		kind of shootky gate: returns only -1,0,1
+;   6 - multiplexer		3	1	(2x in+control)
+;   7 - limit detector		1	1	(in)		returns number to multiply by to stay in -1...1 range (if exceeded, else 1)
+;   8 - min			2	1	(2x in)		X=min(A,B)
+;   9 - max			2	1	(2x in)		X=max(A,B)
+;   10 - delta			2	2	(2x in)		X=(A+B)/2, Y=(A-B)/2
+;   11 - sub			2	1	(2x in)		X=A-B
+; * 12 - adder			2	1	(2x in)		X=A+B
+;   13 - compare		2	1	(2x in)		X=0 if A=B,X=-1 if A<B, X=1 if A>B
+;   14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
+; * 15 - neg			1	1	(in)		X=-A
 
+; 1 - trim, 12 - add
 task_calc_add:
 		movw	ZL,WL
 		adiw	ZL,7
@@ -1519,6 +1549,7 @@ task_calc_add:
 		rcall	math_pop_channel
 		rjmp	task_calc_99
 
+; 2 - reverse, 4 - mul
 task_calc_mul:
 		movw	ZL,WL
 		adiw	ZL,7
@@ -1531,6 +1562,7 @@ task_calc_mul:
 		rcall	math_pop_channel
 		rjmp	task_calc_99
 
+; 15 - neg
 task_calc_neg:
 		movw	ZL,WL
 		adiw	ZL,7
@@ -1541,17 +1573,77 @@ task_calc_neg:
 		rcall	math_pop_channel
 		rjmp	task_calc_99
 
-task_calc_limit:
+; 5 - digital in
+.equ	DIG_TH_LOW=0b1111111010101010	;-0.33333
+.equ	DIG_TH_HI=0b0000000101010101	; 0.33333
 task_calc_digin:
-task_calc_mux:
-task_calc_det:
-task_calc_min:
-task_calc_max:
-task_calc_delta:
-task_calc_sub:
-task_calc_compare:
-task_calc_abs:
+		movw	ZL,WL
+		adiw	ZL,7
+		lpm	temp,Z+			;push channel value on the stack
+		rcall	math_push_channel
+		
+		;check against -0.3333
+		ldi	temp,low(DIG_TH_LOW)	;push -0.3333 on math stack
+		mov	mtemp1,temp
+		ldi	temp,high(DIG_TH_LOW)
+		mov	mtemp2,temp
+		rcall	math_push
+		
+		rcall	math_compare
+		brcs	task_calc_digin_1	;return -1
+		
+		;check against 0.33333
+		rcall	math_drop	;drop last operand from the stack
+		ldi	temp,low(DIG_TH_HI)
+		mov	mtemp1,temp
+		ldi	temp,high(DIG_TH_HI)
+		mov	mtemp2,temp
+		rcall	math_push
+		
+		rcall	math_compare
+		brcs	task_calc_digin_2	;return 0
+		
+		;return 1
+		rcall	math_drop
+		rcall	math_drop
+		ldi	temp,low(L_ONE)
+		mov	mtemp1,temp
+		ldi	temp,high(L_ONE)
+		mov	mtemp2,temp
+task_calc_digin_3:
+		;write value to channel and return
+		movw	ZL,WL
+		adiw	ZL,8
+		lpm	temp,Z
+
+		ldi	XL,low(channels)	;start of channels address space
+		ldi	XH,high(channels)
+		add	XL,temp			;calculate address of this channel
+		adc	XH,zero
+		add	XL,temp
+		adc	XH,zero
+		
+		st	X+,mtemp1
+		st	X+,mtemp2
+		
 		rjmp	task_calc_99
+task_calc_digin_1:
+		rcall	math_drop
+		rcall	math_drop
+		ldi	temp,low(L_MONE)
+		mov	mtemp1,temp
+		ldi	temp,high(L_MONE)
+		mov	mtemp2,temp
+		rjmp	task_calc_digin_3
+task_calc_digin_2:
+		rcall	math_drop
+		rcall	math_drop
+		ldi	temp,low(L_ZERO)
+		mov	mtemp1,temp
+		ldi	temp,high(L_ZERO)
+		mov	mtemp2,temp
+		rjmp	task_calc_digin_3
+
 ;
 
 
@@ -1566,20 +1658,16 @@ task_calc_abs:
 ;
 ; push channel (temp) value on the stack
 math_push_channel:
-		ldi	XL,low(channels)
+		ldi	XL,low(channels)	;start of channels address space
 		ldi	XH,high(channels)
-		add	XL,temp
+		add	XL,temp			;calculate address of this channel
 		adc	XH,zero
 		add	XL,temp
 		adc	XH,zero
-		rcall	math_get_sp
-		adiw	YL,2
-		rcall	math_set_sp
-		sbiw	YL,2
-		ld	temp,X+
-		st	Y+,temp
-		ld	temp,X+
-		st	Y+,temp
+		ld	mtemp1,X+		;get channel value
+		ld	mtemp2,X+
+		rcall	math_push		;push it on the math stack
+		
 		ret
 ;
 
@@ -1601,7 +1689,6 @@ math_pop_channel:
 		rcall	math_set_sp
 		ret
 ;
-
 
 
 
@@ -2295,7 +2382,7 @@ ppm_debug_val:	.byte	2
 ; 'Main' task is working all the time.
 ; After last conversion (in interrupt routine), task is switched to 'calc' task.
 ; 'Calc' task is running until finishes it's job (it's kind of interrupt routine,
-; but with other interrupts enabled). After that, it trigger task switch to 'main'.
+; but with other interrupts enabled). After that, it triggers task switch to 'main'.
 ;
 ; Switch to 'calc':
 ; - save all 'main' registers
@@ -2466,7 +2553,7 @@ sequence:	.byte	2		;pointer to processing sequence block
 cur_model:	.byte	1		;current model
 trims:		.byte	2		;pointer to trims data
 model_name:	.byte	2		;pointer to model name
-wr_tmp:		.byte	PAGESIZE*2	;buffer for flash write (pagesize is in words, so 2x for bytes!)
+;wr_tmp:		.byte	PAGESIZE*2	;buffer for flash write (pagesize is in words, so 2x for bytes!)
 ;
 
 ; #
