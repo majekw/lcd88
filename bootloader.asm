@@ -75,7 +75,7 @@ boot_start:
 		;check reason of reset
 		in	temp,MCUSR	;get reset flags
 		clr	temp3		;zero
-		out	MCUSR,temp2	;clear status register
+		;out	MCUSR,temp2	;clear status register	;commented out - allow main program to discover reset cause
 		sbrs	temp,EXTRF	;check if external reset occured?
 		rjmp	boot_jump0	;if not, just reboot
 		
