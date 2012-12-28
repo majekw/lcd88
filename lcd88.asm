@@ -75,6 +75,9 @@
 ;		- some changes in math code
 ;		- calculation of digital input
 ;		- new block: copy
+; 2012.12.28	- whole menu code removed as it was too complicated and not flexible
+;		- small optimizations (code size)
+
 
 ;TODO
 ; - stage 1
@@ -111,7 +114,7 @@
 .equ	ZEGAR_MAX=ZEGAR/64/1000
 .equ	LCD_PWM=150000
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
-.equ	CHANNELS_MAX=256
+.equ	CHANNELS_MAX=256	;maximum number of channels, including internal
 .equ	BLOCKS_MAX=128		;253 is absolute max
 .equ	EE_SIG1=0xaa		;first byte of eeprom signature
 .equ	EE_SIG2=0x55		;second byte of eeprom signature
@@ -344,12 +347,7 @@ reset:
 		ldi	XH,high(SRAM_START)
 		ldi	YL,low(SRAM_SIZE)
 		ldi	YH,high(SRAM_SIZE)
-reset_1:
-		st	X+,zero
-		dec	YL
-		brne	reset_1
-		dec	YH
-		brne	reset_1
+		rcall	clear_ram
 		
 		;get some data from eeprom (initialize also status register)
 		rcall	eeprom_init
@@ -428,9 +426,9 @@ reset_1:
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
 
 		;init menu
-		ldi	temp,1				;set initial menu positin
-		sts	menu_item,temp
-		ori	statush,(1<<MENU_REDRAW)	;force redraw menu on first call
+		;ldi	temp,1				;set initial menu positin
+		;sts	menu_item,temp
+		;ori	statush,(1<<MENU_REDRAW)	;force redraw menu on first call
 
 
 		; #################### MAIN LOOP #####################
@@ -450,24 +448,10 @@ main_loop:
 .endif
 
 		rcall	show_out_bars
-		sbrs	statush,MENU_CHANGED
-		rcall	show_menu
-		sbrs	statush,MENU_CHANGED
-		rjmp	main_loop_xx
-		
-		;we are on the leaf
-		rcall	menu_bar_clear	;clear header
-		rcall	menu_copy_item	;draw name of choosen item
-		rcall	menu_find_item
-		rcall	menu_bar_text
-		rcall	menu_body_clear	;and clear body
 main_loop_xx:
 
 		lds	temp,keys	;wait for ESC
 		sbrc	temp,KEY_ESC
-		ori	statush,(1<<MENU_REDRAW)
-		andi	statush,~(1<<MENU_CHANGED)
-
 		
 		rjmp	main_loop
 
@@ -483,12 +467,12 @@ main_loop_xx:
 
 ;
 ; helpers for drawing/using menu area
-menu_bar_clear:
+top_bar_clear:
 		m_lcd_set_fg	COLOR_DKRED	;set upper part (for menu name)
 		m_lcd_fill_rect	0,0,DISP_W,8
 		ret
 ;
-menu_bar_text:
+top_bar_text:
 		m_lcd_set_bg	COLOR_DKRED
 		m_lcd_set_fg	COLOR_WHITE
 		m_lcd_text_pos	0,0
@@ -502,359 +486,6 @@ menu_body_clear:
 ;
 
 
-;
-; draw menu
-show_menu:
-		;repaint whole menu?
-		sbrs	statush,MENU_REDRAW
-		rjmp	show_menu_key
-		
-		;repainting menu
-		rcall	menu_bar_clear
-		
-		;submenu name
-		lds	temp,menu_item	;copy menu item for finding
-		sts	menu_itemf,temp
-		rcall	menu_find_item
-		brcc	show_menu_00
-		rjmp	show_menu_key	;if not found (error!), skip the rest
-show_menu_00:
-		sbiw	ZL,1		;get parent id
-		lpm	temp,Z
-		sts	menu_itemf,temp	;find parent name
-		rcall	menu_find_item
-		brcc	show_menu_01
-		rjmp	show_menu_key	;if not found (error!), skip the rest
-show_menu_01:
-		rcall	menu_bar_text
-		rcall	menu_body_clear
-		
-		;draw menu
-		m_lcd_text_pos	0,1		;set position of first menu item
-		rcall	menu_find_child	;find first child of parent
-show_menu_1:
-		brcs	show_menu_key	;check for end of loop
-		
-		sbiw	ZL,2		;need to get menu item id to identify current position
-		lpm	temp3,Z
-		lds	temp4,menu_item
-		cp	temp3,temp4
-		brne	show_menu_2	;no -> go forward
-		m_lcd_set_bg	COLOR_BLACK	;set inversed colors
-		m_lcd_set_fg	COLOR_WHITE
-		rjmp	show_menu_3
-show_menu_2:
-		m_lcd_set_bg	COLOR_WHITE	;set normal colors
-		m_lcd_set_fg	COLOR_BLACK
-show_menu_3:
-		adiw	ZL,2		;get text address
-		rcall	lcd_text	;draw chars
-		
-		lds	temp,lcd_txt_y	;go to new line
-		inc	temp
-		sts	lcd_txt_y,temp
-		ldi	temp,0		;x
-		sts	lcd_txt_x,temp
-		
-		ldi	temp,0		;find next item
-		ldi	temp2,0xff
-		rcall	menu_find_next
-		brcc	show_menu_1	;loop if not last
-		
-		
-show_menu_key:	;key handling - menu navigation
-		andi	statush,~((1<<MENU_REDRAW)|(1<<MENU_CHANGED))	;don't redraw again
-		
-		;check for key press
-		lds	temp,keys
-		tst	temp		;any key?
-		brne	show_menu_key_1
-		ret
-
-		;wait for key release
-show_menu_key_1:
-		lds	temp2,keys		;this part blocks drawing bars in real time
-		tst	temp2
-		brne	show_menu_key_1
-		
-		rcall	menu_copy_item	;find item
-		;check what key was pressed
-		sbrc	temp,KEY_UP
-		rjmp	show_menu_key_up
-		sbrc	temp,KEY_DOWN
-		rjmp	show_menu_key_down
-		sbrc	temp,KEY_ESC
-		rjmp	show_menu_key_esc
-		sbrc	temp,KEY_ENTER
-		rjmp	show_menu_key_enter
-		rjmp	show_menu_key_e		;if nothing found -> end
-show_menu_key_up:
-		rcall	menu_find_upper
-show_menu_key_ee:
-		sbiw	ZL,2
-		lpm	temp,Z
-		sts	menu_item,temp
-		rjmp	show_menu_key_e
-show_menu_key_down:
-		rcall	menu_find_lower
-		rjmp	show_menu_key_ee
-show_menu_key_esc:
-		rcall	menu_find_item
-		sbiw	ZL,1			;get parent id
-		lpm	temp,Z
-		tst	temp			;check if we are already at top level?
-		breq	show_menu_key_e		;if yes, do nothing
-		sts	menu_item,temp		;update menu item
-		rjmp	show_menu_key_e
-
-show_menu_key_enter:
-		rcall	menu_find_child
-		brcs	show_menu_key_en_1	;child not found = we are on leaf!
-		sbiw	ZL,2			;next menu item = child id
-		lpm	temp,Z
-		sts	menu_item,temp
-		rjmp	show_menu_key_e
-show_menu_key_en_1:
-		ori	statush,(1<<MENU_CHANGED)	;leaf
-		ret
-
-show_menu_key_e:
-		ori	statush,(1<<MENU_REDRAW)	;redraw menu
-		ret
-
-;
-; search for menu item
-; args:
-;	temp: mask for item
-;	temp2: mask for parent item
-; destroys: temp3, temp4, X
-; return: Z points to first character of menu item name
-menu_find:
-		ldi	ZL,low(menu_data<<1)	;start of menu definition
-		ldi	ZH,high(menu_data<<1)
-menu_find_next:
-		ldi	XL,low(menu_data_end<<1)	;end of menu definition
-		ldi	XH,high(menu_data_end<<1)
-menu_find_next_1:
-		movw	WL,ZL		;save Z for future use
-		;check for end
-		cp	ZL,XL
-		cpc	ZH,XH
-		brcs	menu_find_next_2
-		sec			;set carry - not found
-		ret
-menu_find_next_2:
-		lpm	temp3,Z+		;check menu item
-		lds	temp4,menu_itemf
-		and	temp3,temp
-		and	temp4,temp
-		cp	temp3,temp4
-		brne	menu_find_next_e
-		lpm	temp3,Z+		;check parent item
-		lds	temp4,menu_itemf
-		and	temp3,temp2
-		and	temp4,temp2
-		cp	temp3,temp4
-		brne	menu_find_next_e
-		;found
-		;movw	ZL,WL		;restore Z
-		clc			;clear carry - OK
-		ret
-menu_find_next_e:
-		movw	ZL,WL
-		adiw	ZL,2
-menu_find_next_e1:
-		lpm	temp3,Z+	;get char
-		tst	temp3
-		brne	menu_find_next_e1	;exit if =0
-		rjmp	menu_find_next_1
-;
-
-
-;
-; #### some usefull finds ####
-; find item
-menu_find_item:
-		ldi	temp,0xff	;find item
-		ldi	temp2,0		;ignore parent item
-		rjmp	menu_find	;find menu item
-;
-
-;
-; find first child
-menu_find_child:
-		ldi	temp,0		;ignore item id
-		ldi	temp2,0xff	;check parent id
-		rjmp	menu_find
-;
-
-;
-; find upper item
-menu_find_upper:
-		rcall	menu_copy_item	;find item
-		rcall	menu_find_item
-		
-		sbiw	ZL,1		;get parent
-		lpm	temp,Z
-		sts	menu_itemf,temp
-		rcall	menu_find_child	;find first menu item on the same level
-		brcs	menu_find_upper_e	;error?
-menu_find_upper_1:
-		sbiw	ZL,2		;get id of found block
-		lpm	temp3,Z
-		lds	temp4,menu_item	;get last id
-		cp	temp3,temp4	;if equal then this is the end
-		breq	menu_find_upper_e
-		;not equal, update r0
-		mov	r0,temp3
-		adiw	ZL,2
-		rcall	menu_find_next_e1	;hack to skip name and search next
-		brcc	menu_find_upper_1	;loop if not end/error
-menu_find_upper_e:
-		sts	menu_itemf,r0	;in r0 is last item id
-		rjmp	menu_find_item	;find this and return
-;
-
-;
-; find lower item
-menu_find_lower:
-		rcall	menu_copy_item	;find item
-		rcall	menu_find_item
-		brcs	menu_find_lower_e
-		sbiw	ZL,1		;get parent id
-		lpm	temp,Z
-		adiw	ZL,1		;restore Z
-		sts	menu_itemf,temp	;we will search first item with the same parent id
-		ldi	temp,0		;ignore item id
-		ldi	temp2,0xff	;search for parent id
-		rcall	menu_find_next_e1	;hack - jump to end of search loop, X is set by last call of menu_find
-		brcc	menu_find_lower_e	;if not out of range - exit
-		;out of range
-		rcall	menu_copy_item
-		rcall	menu_find_item
-menu_find_lower_e:
-		ret
-;
-
-;
-; copy byte from menu_item to menu_itemf
-menu_copy_item:
-		lds	r0,menu_item
-		sts	menu_itemf,r0
-		ret
-;
-
-.dseg
-menu_item:	.byte	1	;parameter for showing menu
-menu_itemf:	.byte	1	;used to find menu item
-.cseg
-; MENU STRUCTURE:
-; - trim (1)
-; - reverse (2)
-; - model (3)
-;   - save (4)
-;   - load (5)
-;   - copy (6)
-;   - edit (7)
-;     - blocks (8)
-;       - add (9)
-;       - remove (10)
-;       - connect (11)
-;       - description (12)
-;     - channels (13)
-;       - value (14)
-;       - description (15)
-;     - model name (16)
-;   - delete (17)
-; - extra (18)
-;   - stoper (19)
-; - setup (20)
-;   - info (21)
-;   - debug (22)
-;   - backup (23)
-;   - restore (24)
-;   - calibrate sticks (25)
-;     - channel0 (47)
-;     - channel1 (48)
-;     - channel2 (49)
-;     - channel3 (50)
-;     - channel4 (51)
-;     - channel5 (52)
-;     - channel6 (53)
-;     - channel7 (54)
-;     - reset all (55)
-;   - clean-up memory (26)
-;   - output polarization (27)
-;     - normal (56)
-;     - inverted (57)
-;   - adc filtering (28)
-;     - none (29)
-;     - x2 (30)
-;     - x4 (31)
-;   - send FMSPIC frames via rs (disable extender) (32)
-;     - disable (33)
-;     - enable (34)
-;   - pwm duty for LCD (35)
-;     - power from 1S LiIon (36)
-;     - power from 5V (37)
-;     - custom (38)
-;   - reset to defaults (eeprom_init) (39)
-;     - no (40)
-;     - yes (41)
-;   - extender (42)
-;     - enable (44)
-;     - disable (45)
-;     - calibrate sticks (43)
-;     - trainer mode (46)
-; last=57
-;
-; # menu data format
-; 0 - item id
-; 1 - parent item id (top level=0)
-; 2... - name (0 terminated)
-; # hints
-; 0 - item id
-; 1 - length of hint
-; 2... - hint (max 44 chars) (0 terminated)
-
-menu_data:
-		.db	0,255,"Main Menu",0
-		.db	1,0,"Trim",0,2,0,"Reverse",0,3,0,"Model",0,4,3,"Load",0
-		.db	5,3,"Save",0,6,3,"Copy",0
-		.db	7,3,"Edit",0,8,7,"Blocks",0
-		.db	9,8,"Add",0
-		.db	10,8,"Remove",0,11,8,"Connect",0,12,8,"Description",0,13,7,"Channels",0
-		.db	14,13,"Value",0
-		.db	15,13,"Description",0
-		.db	16,7,"Model name",0,17,3,"Delete",0
-		.db	18,0,"Extra",0
-		.db	19,18,"Stoper",0,20,0,"Setup",0,21,20,"Info",0
-		.db	22,20,"Debug",0
-		.db	23,20,"Backup ",0,24,20,"Restore",0,25,20,"Calibrate",0
-		.db	47,25,"Channel 0",0
-		.db	48,25,"Channel 1",0
-		.db	49,25,"Channel 2",0
-		.db	50,25,"Channel 3",0
-		.db	51,25,"Channel 4",0
-		.db	52,25,"Channel 5",0
-		.db	53,25,"Channel 6",0
-		.db	54,25,"Channel 7",0
-		.db	55,25,"Reset all",0
-		.db	26,20,"Clean-up memory",0
-		.db	27,20,"PPM polarization",0,56,27,"Normal",0
-		.db	57,27,"Inverted",0,28,20,"ADC filtering",0,29,28,"None",0
-		.db	30,28,"x2",0,31,28,"x4",0
-		.db	32,20,"FMS-PIC out",0
-		.db	33,32,"Disable",0
-		.db	34,32,"Enable",0,35,20,"Backlight",0,36,35,"1S LiIon",0
-		.db	37,35,"5V",0,38,35,"Custom",0
-		.db	39,20,"Reset to defaults",0
-		.db	40,39,"NO",0,41,39,"Yes",0,0xff,0xff,0
-;		.db	42,20,8,"Extender",44,42,6,"Enable"
-;		.db	45,42,7,"Disable"
-;		.db	43,42,16,"Calibrate sticks",46,42,12,"Trainer mode"
-menu_data_end:
-menu_hints:
 
 ;
 ; redraw status line
@@ -1611,13 +1242,15 @@ task_calc_digin:
 		brlt	task_calc_digin_2	;return 0
 		
 		;return 1
-		rcall	math_drop
-		rcall	math_drop
 		ldi	temp,low(L_ONE)
 		mov	mtemp1,temp
 		ldi	temp,high(L_ONE)
 		mov	mtemp2,temp
 task_calc_digin_3:
+		;clean math stack
+		rcall	math_drop
+		rcall	math_drop
+
 		;write value to channel and return
 		movw	ZL,WL
 		adiw	ZL,8
@@ -1631,16 +1264,12 @@ task_calc_digin_3:
 		rjmp	task_calc_99
 
 task_calc_digin_1:
-		rcall	math_drop
-		rcall	math_drop
 		ldi	temp,low(L_MONE)
 		mov	mtemp1,temp
 		ldi	temp,high(L_MONE)
 		mov	mtemp2,temp
 		rjmp	task_calc_digin_3
 task_calc_digin_2:
-		rcall	math_drop
-		rcall	math_drop
 		ldi	temp,low(L_ZERO)
 		mov	mtemp1,temp
 		ldi	temp,high(L_ZERO)
