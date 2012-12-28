@@ -40,6 +40,7 @@
 ; 13 - compare			2	1	(2x in)		X=0 if A=B,X=-1 if A<B, X=1 if A>B
 ; 14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
 ; 15 - neg			1	1	(in)		X=-A
+; 16 - copy			1	1	(in)		X=A
 
 ; specific blocks:
 ; 0 - block
@@ -258,4 +259,66 @@
 		.db	model+(3<<6),20,26,"reverse for ch2",0,0
 		.db	model+(3<<6),20,27,"reverse for ch3",0,0
 		.db	model+(3<<6),20,28,"reverse for ch4",0,0
+
+
+
+; full 8 channels
+;
+.set		model=4
+		;channels
+		;.db	model+(2<<6),6,0,1,0,0		;adc0 input
+		;.db	model+(2<<6),6,1,2,0,0		;adc1 input
+		;.db	model+(2<<6),6,2,3,0,0		;adc2 input
+		;.db	model+(2<<6),6,3,4,0,0		;adc3 input
+		;.db	model+(2<<6),6,4,1,0,0		;adc4 input
+		;.db	model+(2<<6),6,5,2,0,0		;adc5 input
+		;.db	model+(2<<6),6,6,3,0,0		;adc6 input
+		;.db	model+(2<<6),6,7,4,0,0		;adc7 input
+		;.db	model+(2<<6),6,16,5,0,0		;ch0 out
+		;.db	model+(2<<6),6,17,6,0,0		;ch1 out
+		;.db	model+(2<<6),6,18,7,0,0		;ch2 out
+		;.db	model+(2<<6),6,19,8,0,0		;ch3 out
+		;.db	model+(2<<6),6,20,5,0,0		;ch4 out
+		;.db	model+(2<<6),6,21,6,0,0		;ch5 out
+		;.db	model+(2<<6),6,22,7,0,0		;ch6 out
+		;.db	model+(2<<6),6,23,8,0,0		;ch7 out
+		.db	model+(2<<6),6,28,0,0,0		;ch0 trim (default 0)
+		.db	model+(2<<6),6,29,0,0,0		;ch1 trim
+		.db	model+(2<<6),6,30,0,0,0		;ch2 trim
+		.db	model+(2<<6),6,31,0,0,0		;ch3 trim
+		.db	model+(2<<6),6,42,0,0,0		;ch4 trim
+		.db	model+(2<<6),6,32,0,low(L_ONE),high(L_ONE)	;ch0 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,33,0,low(L_ONE),high(L_ONE)	;ch1 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,34,0,low(L_ONE),high(L_ONE)	;ch2 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,35,0,low(L_ONE),high(L_ONE)	;ch3 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,40,0,low(L_ONE),high(L_ONE)	;ch4 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,36,0,0,0	;ch0 connection between trim and inverse
+		.db	model+(2<<6),6,37,0,0,0	;ch1 connection between trim and inverse
+		.db	model+(2<<6),6,38,0,0,0	;ch2 connection between trim and inverse
+		.db	model+(2<<6),6,39,0,0,0	;ch3 connection between trim and inverse
+		.db	model+(2<<6),6,41,0,0,0	;ch4 connection between trim and inverse
+		.db	model+(2<<6),6,43,0,0,0	;ch7 - reverse
+
+		;blocks
+		.db	model+(0<<6),10,1,0,1,2,1,0,28,36	;trim for ch0
+		.db	model+(0<<6),10,2,0,1,2,1,1,29,37	;trim for ch1
+		.db	model+(0<<6),10,3,0,1,2,1,2,30,38	;trim for ch2
+		.db	model+(0<<6),10,4,0,1,2,1,3,31,39	;trim for ch3
+		.db	model+(0<<6),10,9,0,1,2,1,4,42,41	;trim for ch3
+		.db	model+(0<<6),10,5,0,2,2,1,36,32,16	;reverse for ch0
+		.db	model+(0<<6),10,6,0,2,2,1,37,33,17	;reverse for ch1
+		.db	model+(0<<6),10,7,0,2,2,1,38,34,18	;reverse for ch2
+		.db	model+(0<<6),10,8,0,2,2,1,39,35,19	;reverse for ch3
+		.db	model+(0<<6),10,10,0,2,2,1,41,40,20	;reverse for ch4
+		.db	model+(0<<6),10,11,0,5,1,1,5,21,0	;digital input for ch5
+		.db	model+(0<<6),10,12,0,5,1,1,6,22,0	;digital input for ch6
+		.db	model+(0<<6),10,13,0,5,1,1,7,43,0	;digital input for ch7
+		.db	model+(0<<6),10,14,0,15,1,1,43,23,0	;reverse for ch7
+
+		
+		;block processing order
+		.db	model+(1<<6),16,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+		
+		;decriptions
+		.db	model+(3<<6),14,0,"Full 8 CH",0,0
 
