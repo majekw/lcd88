@@ -74,6 +74,7 @@
 ;		- added support for Atmega328
 ;		- some changes in math code
 ;		- calculation of digital input
+;		- new block: copy
 
 ;TODO
 ; - stage 1
@@ -417,7 +418,7 @@ reset_1:
 
 		rcall	trims_find		;find trim data for sticks
 		
-		ldi	temp,3			;HACK
+		ldi	temp,4			;HACK
 		sts	cur_model,temp
 		rcall	model_load		;load last used model
 
@@ -1481,9 +1482,14 @@ task_calc_1:	;main processing loop (Z points to block number, temp contains numb
 		breq	task_calc_compare
 		cpi	temp,14		;absolute value
 		breq	task_calc_abs
-		cpi	temp,15
+		cpi	temp,15		;negation
 		breq	task_calc_neg
-		rjmp	task_calc_99	;default = do nothing
+		
+		cpi	temp,16		;copy
+		brne	task_calc_tcc
+		rjmp	task_calc_copy
+task_calc_tcc:
+
 task_calc_99:	;end of main loop
 		pop	ZH
 		pop	ZL
@@ -1535,6 +1541,7 @@ task_calc_abs:
 ;   13 - compare		2	1	(2x in)		X=0 if A=B,X=-1 if A<B, X=1 if A>B
 ;   14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
 ; * 15 - neg			1	1	(in)		X=-A
+; * 16 - copy			1	1	(in)		X=A
 
 ; 1 - trim, 12 - add
 task_calc_add:
@@ -1574,8 +1581,8 @@ task_calc_neg:
 		rjmp	task_calc_99
 
 ; 5 - digital in
-.equ	DIG_TH_LOW=0b1111111010101010	;-0.33333
-.equ	DIG_TH_HI=0b0000000101010101	; 0.33333
+.equ	DIG_TH_LOW=0b1111111010101011	;-0.33333
+.equ	DIG_TH_HI= 0b0000000101010101	; 0.33333
 task_calc_digin:
 		movw	ZL,WL
 		adiw	ZL,7
@@ -1590,7 +1597,7 @@ task_calc_digin:
 		rcall	math_push
 		
 		rcall	math_compare
-		brcs	task_calc_digin_1	;return -1
+		brlt	task_calc_digin_1	;return -1
 		
 		;check against 0.33333
 		rcall	math_drop	;drop last operand from the stack
@@ -1601,7 +1608,7 @@ task_calc_digin:
 		rcall	math_push
 		
 		rcall	math_compare
-		brcs	task_calc_digin_2	;return 0
+		brlt	task_calc_digin_2	;return 0
 		
 		;return 1
 		rcall	math_drop
@@ -1615,18 +1622,14 @@ task_calc_digin_3:
 		movw	ZL,WL
 		adiw	ZL,8
 		lpm	temp,Z
-
-		ldi	XL,low(channels)	;start of channels address space
-		ldi	XH,high(channels)
-		add	XL,temp			;calculate address of this channel
-		adc	XH,zero
-		add	XL,temp
-		adc	XH,zero
 		
+		rcall	calc_channel_addr
+
 		st	X+,mtemp1
 		st	X+,mtemp2
 		
 		rjmp	task_calc_99
+
 task_calc_digin_1:
 		rcall	math_drop
 		rcall	math_drop
@@ -1643,10 +1646,41 @@ task_calc_digin_2:
 		ldi	temp,high(L_ZERO)
 		mov	mtemp2,temp
 		rjmp	task_calc_digin_3
+;
 
+; 16 - copy
+task_calc_copy:
+		movw	ZL,WL
+		adiw	ZL,7
+		lpm	temp,Z+			;get input channel number
+		rcall	calc_channel_addr
+
+		ld	temp3,X+		;get channel value
+		ld	temp4,X+
+
+		lpm	temp,Z+			;get output channel number
+		rcall	calc_channel_addr
+		
+		st	X+,temp3		;store value
+		st	X+,temp4
+		
+		rjmp	task_calc_99
 ;
 
 
+;
+; # calculate channel address
+; in: temp - channel number
+; out: X - address
+calc_channel_addr:
+		ldi	XL,low(channels)	;start of channels address space
+		ldi	XH,high(channels)
+		add	XL,temp			;calculate address of this channel
+		adc	XH,zero
+		add	XL,temp
+		adc	XH,zero
+		ret
+;
 ;
 ; #####################  MATH ROUTINES  ###########################
 
@@ -1658,12 +1692,7 @@ task_calc_digin_2:
 ;
 ; push channel (temp) value on the stack
 math_push_channel:
-		ldi	XL,low(channels)	;start of channels address space
-		ldi	XH,high(channels)
-		add	XL,temp			;calculate address of this channel
-		adc	XH,zero
-		add	XL,temp
-		adc	XH,zero
+		rcall	calc_channel_addr
 		ld	mtemp1,X+		;get channel value
 		ld	mtemp2,X+
 		rcall	math_push		;push it on the math stack
@@ -1674,12 +1703,7 @@ math_push_channel:
 ;
 ; pop channel (temp) from the stack
 math_pop_channel:
-		ldi	XL,low(channels)
-		ldi	XH,high(channels)
-		add	XL,temp
-		adc	XH,zero
-		add	XL,temp
-		adc	XH,zero
+		rcall	calc_channel_addr
 		rcall	math_get_sp
 		sbiw	YL,2
 		ld	temp,Y
