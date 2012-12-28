@@ -23,6 +23,8 @@
 ;		- math_max
 ; 2012.12.27	- math_push
 ;		- math_drop
+; 2012.12.28	- fixed math_compare using
+
 
 ;
 ; initialize math stack pointer
@@ -230,7 +232,7 @@ math_mul_1:
 
 ;
 ; compare arguments on the stack
-;	return carry if first argument is less than second
+;	return S if first argument is less than second, use brge or brlt jumps for checking!
 math_compare:
 		rcall	math_get_sp
 		sbiw	YL,4
@@ -240,6 +242,7 @@ math_compare:
 		ldd	mtemp4,Y+3
 		sub	mtemp1,mtemp3
 		sbc	mtemp2,mtemp4
+		
 		ret
 ;
 
@@ -249,8 +252,8 @@ math_sub:
 		rcall	math_compare	;it makes substract indeed but without storing result
 		st	Y,mtemp1	;store result
 		std	Y+1,mtemp2
-		adiw	YL,2
-		rcall	math_set_sp
+
+		rcall	math_drop
 		ret
 ;
 
@@ -259,11 +262,10 @@ math_sub:
 ; minimum
 math_min:
 		rcall	math_compare
-		brcs	math_min_1
+		brge	math_min_1
 		rcall	math_swap
 math_min_1:
-		adiw	YL,2
-		rcall	math_set_sp
+		rcall	math_drop
 		ret
 ;
 
@@ -271,11 +273,10 @@ math_min_1:
 ; maximum
 math_max:
 		rcall	math_compare
-		brcc	math_max_1
+		brlt	math_max_1
 		rcall	math_swap
 math_max_1:
-		adiw	YL,2
-		rcall	math_set_sp
+		rcall	math_drop
 		ret
 ;
 
@@ -284,7 +285,8 @@ math_max_1:
 math_div:
 		rcall	math_sign_calc		;get sign
 
-
+		; TODO
+		
 		sbrc	statush,MATH_SIGN	;restore sign
 		rcall	math_neg
 
@@ -293,7 +295,7 @@ math_div:
 
 ;
 ; push number on the stack
-; mtemp1, mtemp2 - argument
+; mtemp1, mtemp2 - value
 math_push:
 		rcall	math_get_sp
 		adiw	YL,2
