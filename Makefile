@@ -9,7 +9,7 @@ compile: lcd88.hex
 
 bootloader: bootloader.hex
 
-lcd88.hex: bootloader.inc lcd88.asm lcd-s65.asm lcd-s65-ls020.asm lcd-s65-l2f50.asm math-6-10.asm
+lcd88.hex: bootloader.inc lcd88.asm lcd-s65.asm lcd-s65-ls020.asm lcd-s65-l2f50.asm math-6-10.asm models.asm
 	$(ASM) --define $(DEVICE) lcd88.asm -l lcd88.lst
 
 
