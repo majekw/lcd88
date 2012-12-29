@@ -77,7 +77,9 @@
 ;		- new block: copy
 ; 2012.12.28	- whole menu code removed as it was too complicated and not flexible
 ;		- small optimizations (code size)
-
+; 2012.12.29	- tohex optimized
+;		- moved .list to proper place
+;		- small fix to clearing memory :-)
 
 ;TODO
 ; - stage 1
@@ -345,8 +347,8 @@ reset:
 		;clear ram
 		ldi	XL,low(SRAM_START)
 		ldi	XH,high(SRAM_START)
-		ldi	YL,low(SRAM_SIZE)
-		ldi	YH,high(SRAM_SIZE)
+		ldi	YL,low(SRAM_SIZE-2)
+		ldi	YH,high(SRAM_SIZE-2)
 		rcall	clear_ram
 		
 		;get some data from eeprom (initialize also status register)
@@ -450,8 +452,8 @@ main_loop:
 		rcall	show_out_bars
 main_loop_xx:
 
-		lds	temp,keys	;wait for ESC
-		sbrc	temp,KEY_ESC
+		;lds	temp,keys	;wait for ESC
+		;sbrc	temp,KEY_ESC
 		
 		rjmp	main_loop
 
