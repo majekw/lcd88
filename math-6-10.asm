@@ -23,7 +23,9 @@
 ;		- math_max
 ; 2012.12.27	- math_push
 ;		- math_drop
-; 2012.12.28	- fixed math_compare using
+; 2012.12.28	- fixed functions using math_compare
+; 2012.12.29	- math_pop
+;		- math_todec
 
 
 ;
@@ -307,11 +309,170 @@ math_push:
 ;
 
 ;
+; pop number from the stack
+; out: mtemp1, mtemp2 - value
+math_pop:
+		rcall	math_get_sp
+		sbiw	YL,2
+		ld	mtemp1,Y
+		ldd	mtemp2,Y+1
+		rcall	math_set_sp
+		ret
+;
+
+;
 ; drop last operand from the stack
 math_drop:
 		rcall	math_get_sp
 		sbiw	YL,2
 		rcall	math_set_sp
+		ret
+;
+
+;
+; convert to decimal
+; it needs max 14 bytes of output (1 sign + 2 number + 1 dot + 10 fraction)
+; in fact, 4 digits of fraction should be enough, so total 8 bytes needed
+; anyway, using 16 bit to compute it limits number of bcd digits to 4
+; in: mtemp1, mtemp2
+.equ	math_todec_out=ram_temp		;use general purpose ram buffer for output
+math_todec:
+		;get sign
+		ldi	temp,'+'
+		sbrs	mtemp2,7	;check sign
+		rjmp	math_todec_1
+		;minus...
+		mov	mtemp3,zero	;negate
+		mov	mtemp4,zero
+		sub	mtemp3,mtemp1
+		sbc	mtemp4,mtemp2
+		mov	mtemp1,mtemp3	;get result back to proper registers
+		mov	mtemp2,mtemp4
+		ldi	temp,'-'
+math_todec_1:
+		sts	math_todec_out,temp	;store sign
+		
+		push	mtemp1		;save value for later
+		push	mtemp2
+
+		;get integer part
+		clr	temp		;prepare operand to double-dabble
+    		lsl	mtemp2
+    		
+    		lsl	mtemp2		;shift1
+    		rol	temp
+    		lsl	mtemp2		;shift2
+    		rol	temp
+    		lsl	mtemp2		;shift3
+    		rol	temp
+    		cpi	temp,5		;check if add3 should be performed
+    		brcc	math_todec_2
+    		subi	temp,-3		;add3
+math_todec_2:	lsl	mtemp2		;shift4
+		rol	temp
+		mov	temp2,temp
+		andi	temp2,0x0f
+		cpi	temp2,5
+		brcs	math_todec_3
+		subi	temp,-3
+math_todec_3:	lsl	mtemp2		;shift5
+		rol	temp
+		
+		mov	temp2,temp
+		swap	temp2		;tens
+		andi	temp2,0x0f
+		subi	temp2,-48
+		sts	math_todec_out+1,temp2
+		andi	temp,0x0f
+		subi	temp,-48
+		sts	math_todec_out+2,temp
+		
+		;comma
+		ldi	temp,'.'
+		sts	math_todec_out+3,temp
+		
+		;get fraction part
+		pop	mtemp2
+		pop	mtemp1
+		ldi	temp,0b00000011	;drop integer part
+		and	mtemp2,temp
+		rcall	math_push	;push on the stack
+		ldi	temp,low(10000)	;prepare second number to multiply
+		mov	mtemp1,temp
+		ldi	temp,high(10000)
+		mov	mtemp2,temp
+		rcall	math_push	;push 10000 on the stack
+		rcall	math_mul	;multiply
+		rcall	math_pop	;get result
+		
+		;convert fraction to bcd
+		clr	mtemp3		;prepare result
+		clr	mtemp4
+		ldi	temp,16		;shifts count
+		ldi	temp2,3		;prepare operand to add3
+		mov	temp3,temp2
+math_todec_4:
+		lsl	mtemp1		;shift
+		rol	mtemp2
+		rol	mtemp3
+		rol	mtemp4
+		dec	temp		;check for shift count
+		breq	math_todec_e
+		;check for add3
+		mov	temp2,mtemp3	;first nibble
+		andi	temp2,0x0f
+		cpi	temp2,5
+		brcs	math_todec_5
+		add	mtemp3,temp3	;add3
+		adc	mtemp4,zero
+math_todec_5:
+		mov	temp2,mtemp3	;second nibble
+		swap	temp2
+		andi	temp2,0x0f
+		cpi	temp2,5
+		brcs	math_todec_6
+		swap	temp3		;add3
+		add	mtemp3,temp3
+		adc	mtemp4,zero
+		swap	temp3
+math_todec_6:
+		mov	temp2,mtemp4	;third nibble
+		andi	temp2,0x0f
+		cpi	temp2,5
+		brcs	math_todec_7
+		add	mtemp4,temp3	;add3
+math_todec_7:
+		mov	temp2,mtemp4	;last nibble
+		swap	temp2
+		andi	temp2,0x0f
+		cpi	temp2,5
+		brcs	math_todec_4
+		swap	temp3		;add3
+		add	mtemp4,temp3
+		swap	temp3
+		rjmp	math_todec_4
+math_todec_e:
+		;store resut
+		mov	temp,mtemp4
+		swap	temp
+		andi	temp,0x0f
+		subi	temp,-48
+		sts	math_todec_out+4,temp
+		mov	temp,mtemp4
+		andi	temp,0x0f
+		subi	temp,-48
+		sts	math_todec_out+5,temp
+		mov	temp,mtemp3
+		swap	temp
+		andi	temp,0x0f
+		subi	temp,-48
+		sts	math_todec_out+6,temp
+		mov	temp,mtemp3
+		andi	temp,0x0f
+		subi	temp,-48
+		sts	math_todec_out+7,temp
+		sts	math_todec_out+8,zero	;terminating zero
+		
 		ret
 ;
 
