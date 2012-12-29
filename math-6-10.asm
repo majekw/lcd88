@@ -366,7 +366,7 @@ math_todec_1:
     		lsl	mtemp2		;shift3
     		rol	temp
     		cpi	temp,5		;check if add3 should be performed
-    		brcc	math_todec_2
+    		brcs	math_todec_2
     		subi	temp,-3		;add3
 math_todec_2:	lsl	mtemp2		;shift4
 		rol	temp
