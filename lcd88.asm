@@ -84,6 +84,10 @@
 ;		- small optimizations (model_load)
 ;		- print hex value of channel
 ;		- print dec value of channel
+;		- a small housekeeping
+;		- menu_init done
+;		- menu_loop started (drawing done, to do: keys)
+
 
 ;TODO
 ; - stage 1
@@ -168,8 +172,8 @@
 ; bits in status register
 .equ	ADC_RUN=0
 .equ	ADC_READY=1
-.equ	ADC_FILTER=2
-.equ	ADC_FILTER4=3
+.equ	ADC_FILTER=2		;enable x2 average on input channels
+.equ	ADC_FILTER4=3		;x4 average, needs ADC_FILTER to work!
 .equ	ADC_ON=4
 .equ	PPM_ON=5
 .equ	PPM_POL=6
@@ -180,7 +184,7 @@
 .equ	BAR_OV=2		;needed for showing bars
 .equ	EXTENDER=3		;extender present?
 .equ	MENU_REDRAW=4		;menu needs redrawing?
-.equ	MENU_CHANGED=5		;menu item changed
+.equ	MENU_CHANGED=5		;menu item selected/key pressed
 .equ	FMS_OUT=6		;output FMS PIC compatible frames via rs
 .equ	STATUS_CHANGED=7	;if set, redraw all status line
 
@@ -442,25 +446,8 @@ reset:
 		; #################### MAIN LOOP #####################
 main_loop:
 
-.ifdef DEBUG
-		rcall	kbd_debug
-		waitms	5
-		rcall	adc_debug
-		waitms	5
-		rcall	status_debug
-		waitms	5
-		rcall	ppm_debug
-		waitms	5
-		rcall	out_debug
-		waitms	5
-.endif
-
 		rcall	show_out_bars
 		rcall	show_io_values
-main_loop_xx:
-
-		;lds	temp,keys	;wait for ESC
-		;sbrc	temp,KEY_ESC
 		
 		rjmp	main_loop
 
@@ -493,7 +480,6 @@ menu_body_clear:
 		m_lcd_fill_rect	0,8,DISP_W,12*8
 		ret
 ;
-
 
 
 ;
@@ -804,14 +790,9 @@ tohex:		andi	temp,0x0f
 		ori	temp,48
 		cpi	temp,58
 		brcs	tohex1
-		;push	temp2
-		;ldi	temp2,7
-		;add	temp,temp2
-		;pop	temp2
 		subi	temp,-7
 tohex1:		ret
 ;
-
 
 
 ;
@@ -827,6 +808,107 @@ clear_ram:
 		ret
 ;
 
+
+;
+; # calculate channel address
+; in: temp - channel number
+; out: X - address
+calc_channel_addrX:
+		ldi	XL,low(channels)	;start of channels address space
+		ldi	XH,high(channels)
+		add	XL,temp			;calculate address of this channel
+		adc	XH,zero
+		add	XL,temp
+		adc	XH,zero
+		ret
+;
+;
+
+;
+; # calculate channel address
+; in: temp - channel number
+; out: Y - memory address
+calc_channel_addrY:
+		ldi	YL,low(channels)	;get channel address
+		ldi	YH,high(channels)
+		add	YL,temp
+		adc	YH,zero
+		add	YL,temp
+		adc	YH,zero
+		ret
+;
+
+
+;
+; ############# menu routines ###########
+
+.dseg
+menu_selected:	.byte	1	;currently selected: 0 - ESC, other = enter pressed
+menu_pos:	.byte	1	;current menu position, 0xff - default
+menu_def:	.byte	2	;pointer to current menu definition
+.cseg
+;menu format:
+;	0 - header text (null terminated)
+;	1 - return value
+;	2 - null terminated string
+;	3 - return value
+;	4 - ...
+;	5 - FF - end of menu
+
+
+;
+; # initialize menu/redraw everything from scratch
+; in: Z - address to menu definition
+menu_init:
+		push	ZL
+		push	ZH
+		rcall	top_bar_clear	;clear top bar (destroys Z)
+		pop	ZH
+		pop	ZL
+		rcall	top_bar_text	;print something in top bar
+		sts	menu_def,ZL	;store pointer to real menu
+		sts	menu_def+1,ZH
+		lpm	temp,Z		;get first menu id
+		sts	menu_pos,temp	;and store it as first selected
+		rcall	menu_body_clear	;clear body area
+		andi	statush,~(1<<MENU_CHANGED)	;clear 'dirty' flag
+		ori	statush,(1<<MENU_REDRAW)	;force first menu redraw
+menu_loop:
+		;here is main loop
+		sbrs	statush,MENU_REDRAW	;skip drawing if not needed
+		rjmp	menu_keys
+		
+		;redrawing menu
+		ldi	temp2,1		;first Y of menu
+		lds	ZL,menu_def	;get address of the rest
+		lds	ZH,menu_def+1
+menu_loop_1:
+		sts	lcd_txt_x,zero	;set position
+		sts	lcd_txt_y,temp2
+		lpm	temp,Z+		;get menu position id
+		lds	temp3,menu_pos
+		cp	temp,temp3	;is it current position?
+		breq	menu_loop_2
+		;no, default colors
+		m_lcd_set_bg	COLOR_WHITE
+		m_lcd_set_fg	COLOR_BLACK
+		rjmp	menu_loop_3
+menu_loop_2:
+		m_lcd_set_bg	COLOR_BLACK
+		m_lcd_set_fg	COLOR_WHITE
+menu_loop_3:
+		push	temp2
+		rcall	lcd_text
+		pop	temp2
+		inc	temp2
+		lpm	temp,Z
+		cpi	temp,0xff	;end of menu?
+		brne	menu_loop_1
+		
+menu_keys:
+		;check for keys pressed
+		ret
+;
 
 ;
 ; ########### eeprom routines ###########
@@ -1425,35 +1507,6 @@ task_calc_copy:
 ;
 
 
-;
-; # calculate channel address
-; in: temp - channel number
-; out: X - address
-calc_channel_addrX:
-		ldi	XL,low(channels)	;start of channels address space
-		ldi	XH,high(channels)
-		add	XL,temp			;calculate address of this channel
-		adc	XH,zero
-		add	XL,temp
-		adc	XH,zero
-		ret
-;
-;
-
-;
-; calculate channel address
-; in: temp - channel number
-; out: Y - memory address
-calc_channel_addrY:
-		ldi	YL,low(channels)	;get channel address
-		ldi	YH,high(channels)
-		add	YL,temp
-		adc	YH,zero
-		add	YL,temp
-		adc	YH,zero
-		ret
-;
-
 
 ; #####################  MATH ROUTINES  ###########################
 
@@ -1580,7 +1633,6 @@ out_debug:
 ;
 
 
-.endif
 
 ; X - memory address
 ; temp2 - number of bytes
@@ -1601,6 +1653,7 @@ mem_debug:
 		dec	temp2
 		brne	mem_debug
 		ret
+.endif
 ;
 ;	
 ; ######## END OF DEBUG ROUTINES #########
