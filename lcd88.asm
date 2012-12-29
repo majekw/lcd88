@@ -106,6 +106,7 @@
     .endif
 .endif
 
+.list
 
 ;.define DEBUG
 
@@ -251,7 +252,7 @@
 
 ; # important global ram variables
 .dseg
-ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and MATH
+ram_temp:	.byte	11	;general purpose temporary space, used also in LCD (11B) and math code
 .cseg
 
 
@@ -262,7 +263,6 @@ ram_temp:	.byte	11	;general purpose temporary space, used also in LCD(11B) and M
 ; ##########################################################################
 ; #
 
-.list
 .cseg					;CODE segment
 .org 0
 .ifdef M88
@@ -670,10 +670,11 @@ tohex:		andi	temp,0x0f
 		ori	temp,48
 		cpi	temp,58
 		brcs	tohex1
-		push	temp2
-		ldi	temp2,7
-		add	temp,temp2
-		pop	temp2
+		;push	temp2
+		;ldi	temp2,7
+		;add	temp,temp2
+		;pop	temp2
+		subi	temp,-7
 tohex1:		ret
 ;
 
