@@ -80,6 +80,10 @@
 ; 2012.12.29	- tohex optimized
 ;		- moved .list to proper place
 ;		- small fix to clearing memory :-)
+;		- show input/output values screen
+;		- small optimizations (model_load)
+;		- print hex value of channel
+;		- print dec value of channel
 
 ;TODO
 ; - stage 1
@@ -137,8 +141,10 @@
 .equ	CHANNEL_USERMOD=27	;first channel that can be modified by user
 ;numbers
 .equ	L_ZERO=0
-.equ	L_ONE= 0b0000010000000000	;1 in 6.10
+.equ	L_ONE= 0b0000010000000000	; 1 in 6.10
 .equ	L_MONE=0b1111110000000000	;-1 in 6.10
+.equ	L_M033=0b1111111010101011	;-0.33333
+.equ	L_033= 0b0000000101010101	; 0.33333
 ;keyboard
 .equ	KBD_DELAY=15		;debounce time for keyboard (*2ms)
 .equ	KBD_PORT_0=PORTD
@@ -430,7 +436,7 @@ reset:
 		;init menu
 		;ldi	temp,1				;set initial menu positin
 		;sts	menu_item,temp
-		;ori	statush,(1<<MENU_REDRAW)	;force redraw menu on first call
+		ori	statush,(1<<MENU_REDRAW)	;force redraw menu on first call
 
 
 		; #################### MAIN LOOP #####################
@@ -450,6 +456,7 @@ main_loop:
 .endif
 
 		rcall	show_out_bars
+		rcall	show_io_values
 main_loop_xx:
 
 		;lds	temp,keys	;wait for ESC
@@ -639,13 +646,138 @@ lcd_initialize:
 ;		m_lcd_set_fg	COLOR_CYAN
 
 		m_lcd_text_pos	0,0
-		m_lcd_text	banner
+		;m_lcd_text	banner
 ;
 		
 		m_lcd_set_bg	COLOR_WHITE	;set default colors
 		m_lcd_set_fg	COLOR_BLACK
 		ret
 banner:		.db	"(C) 2007-2012 Marek Wodzinski",0
+;
+
+
+;
+; show input/output values
+.equ	SHOW_IO_Y=2
+show_io_values:
+		sbrs	statush,MENU_REDRAW	;don't redraw whole screen every time
+		rjmp	show_io_values_2
+		
+		rcall	top_bar_clear	;draw title
+		ldi	ZL,low(show_io_txt1<<1)
+		ldi	ZH,high(show_io_txt1<<1)
+		rcall	top_bar_text
+		
+		rcall	menu_body_clear	;clear body
+		
+		m_lcd_set_bg	COLOR_WHITE
+		m_lcd_set_fg	COLOR_BLACK
+		
+		m_lcd_text_pos	0,SHOW_IO_Y	;header
+		m_lcd_text	show_io_txt2
+		
+		;draw channel numbers
+                ldi	temp,SHOW_IO_Y+1
+show_io_values_1:
+                sts     lcd_txt_x,zero	;set position
+                sts     lcd_txt_y,temp
+                push	temp
+                
+        	subi	temp,-(47-SHOW_IO_Y)	;make char from position number
+                sts	lcd_arg1,temp	;print channel number
+                rcall	lcd_char
+
+                pop	temp
+                inc	temp
+                cpi	temp,SHOW_IO_Y+9
+                brne	show_io_values_1
+		
+		andi	statush,~(1<<MENU_REDRAW)
+show_io_values_2:
+		;draw values
+		m_lcd_set_bg	COLOR_WHITE	;set colors
+		m_lcd_set_fg	COLOR_BLACK
+		ldi	temp,0			;init channel number
+show_io_values_3:
+		push	temp
+		subi	temp,-(SHOW_IO_Y+1)	;set position
+		ldi	temp2,2
+		sts	lcd_txt_x,temp2
+		sts	lcd_txt_y,temp
+		pop	temp
+		
+		push	temp
+		rcall	print_ch_hex		;input channel
+		
+		lds	temp,lcd_txt_x		;move cursor
+		inc	temp
+		sts	lcd_txt_x,temp
+		pop	temp
+		push	temp
+		
+		subi	temp,-CHANNEL_OUT	;show output channel
+		rcall	print_ch_hex		;input channel
+		
+		lds	temp,lcd_txt_x		;move cursor
+		inc	temp
+		sts	lcd_txt_x,temp
+
+		pop	temp
+		push	temp
+
+		rcall	print_ch_dec		;print dec value of channel
+		
+		pop	temp
+		inc	temp			;end of loop
+		cpi	temp,8
+		brne	show_io_values_3
+		
+		ret
+show_io_txt1:	.db	"Input/output values",0
+show_io_txt2:	.db	"C IN   OUT  IN(dec)",0
+;
+
+
+;
+; print channel value (hex)
+; temp - channel number
+print_ch_hex:
+		call	calc_channel_addrY
+		
+		ldd	temp,Y+1		;high byte first
+		swap	temp
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		ldd	temp,Y+1
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+
+		ld	temp,Y		;low byte
+		swap	temp
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		ld	temp,Y
+		rcall	tohex
+		sts	lcd_arg1,temp
+		rcall	lcd_char
+		
+		ret
+;
+
+
+;
+; # print channel value (dec)
+; in: temp - channel number
+print_ch_dec:
+		rcall	calc_channel_addrY		;dec!
+		ld	mtemp1,Y+
+		ld	mtemp2,Y+
+		rcall	math_todec
+		m_lcd_text_ram	math_todec_out,8
+		ret
 ;
 
 
@@ -769,7 +901,7 @@ eeprom_init_1:
 		rcall	eeprom_write
 		
 		;status registers
-		ldi	temp,(1<<ADC_FILTER)|(1<<PPM_POL)
+		ldi	temp,(1<<ADC_FILTER)|(1<<PPM_POL)|(1<<ADC_FILTER4)
 		mov	status,temp
 		m_eeprom_write	ee_status
 		
@@ -996,19 +1128,14 @@ model_load_3_1:
 
 model_load_4:
 		;channel
-		ldi	YL,low(channels)	;calculate address of channels in table
-		ldi	YH,high(channels)
 		adiw	ZL,2
 		lpm	temp,Z			;get channel_id
-		add	YL,temp			;calculate channel address
-		adc	YH,zero
-		add	YL,temp
-		adc	YH,zero
+
+		rcall	calc_channel_addrY		;calculate channel address
 
 		adiw	ZL,2
-		lpm	temp,Z			;copy channel value
+		lpm	temp,Z+			;copy channel value
 		st	Y,temp
-		adiw	ZL,1
 		lpm	temp,Z
 		std	Y+1,temp
 		rjmp	model_load_e
@@ -1215,8 +1342,6 @@ task_calc_neg:
 		rjmp	task_calc_99
 
 ; 5 - digital in
-.equ	DIG_TH_LOW=0b1111111010101011	;-0.33333
-.equ	DIG_TH_HI= 0b0000000101010101	; 0.33333
 task_calc_digin:
 		movw	ZL,WL
 		adiw	ZL,7
@@ -1224,9 +1349,9 @@ task_calc_digin:
 		rcall	math_push_channel
 		
 		;check against -0.3333
-		ldi	temp,low(DIG_TH_LOW)	;push -0.3333 on math stack
+		ldi	temp,low(L_M033)	;push -0.3333 on math stack
 		mov	mtemp1,temp
-		ldi	temp,high(DIG_TH_LOW)
+		ldi	temp,high(L_M033)
 		mov	mtemp2,temp
 		rcall	math_push
 		
@@ -1235,9 +1360,9 @@ task_calc_digin:
 		
 		;check against 0.33333
 		rcall	math_drop	;drop last operand from the stack
-		ldi	temp,low(DIG_TH_HI)
+		ldi	temp,low(L_033)
 		mov	mtemp1,temp
-		ldi	temp,high(DIG_TH_HI)
+		ldi	temp,high(L_033)
 		mov	mtemp2,temp
 		rcall	math_push
 		
@@ -1259,7 +1384,7 @@ task_calc_digin_3:
 		adiw	ZL,8
 		lpm	temp,Z
 		
-		rcall	calc_channel_addr
+		rcall	calc_channel_addrX
 
 		st	X+,mtemp1
 		st	X+,mtemp2
@@ -1285,13 +1410,13 @@ task_calc_copy:
 		movw	ZL,WL
 		adiw	ZL,7
 		lpm	temp,Z+			;get input channel number
-		rcall	calc_channel_addr
+		rcall	calc_channel_addrX
 
 		ld	temp3,X+		;get channel value
 		ld	temp4,X+
 
 		lpm	temp,Z+			;get output channel number
-		rcall	calc_channel_addr
+		rcall	calc_channel_addrX
 		
 		st	X+,temp3		;store value
 		st	X+,temp4
@@ -1304,7 +1429,7 @@ task_calc_copy:
 ; # calculate channel address
 ; in: temp - channel number
 ; out: X - address
-calc_channel_addr:
+calc_channel_addrX:
 		ldi	XL,low(channels)	;start of channels address space
 		ldi	XH,high(channels)
 		add	XL,temp			;calculate address of this channel
@@ -1314,6 +1439,22 @@ calc_channel_addr:
 		ret
 ;
 ;
+
+;
+; calculate channel address
+; in: temp - channel number
+; out: Y - memory address
+calc_channel_addrY:
+		ldi	YL,low(channels)	;get channel address
+		ldi	YH,high(channels)
+		add	YL,temp
+		adc	YH,zero
+		add	YL,temp
+		adc	YH,zero
+		ret
+;
+
+
 ; #####################  MATH ROUTINES  ###########################
 
 ;generic math
@@ -1324,7 +1465,7 @@ calc_channel_addr:
 ;
 ; push channel (temp) value on the stack
 math_push_channel:
-		rcall	calc_channel_addr
+		rcall	calc_channel_addrX
 		ld	mtemp1,X+		;get channel value
 		ld	mtemp2,X+
 		rcall	math_push		;push it on the math stack
@@ -1335,7 +1476,7 @@ math_push_channel:
 ;
 ; pop channel (temp) from the stack
 math_pop_channel:
-		rcall	calc_channel_addr
+		rcall	calc_channel_addrX
 		rcall	math_get_sp
 		sbiw	YL,2
 		ld	temp,Y
@@ -1439,6 +1580,7 @@ out_debug:
 ;
 
 
+.endif
 
 ; X - memory address
 ; temp2 - number of bytes
@@ -1460,7 +1602,6 @@ mem_debug:
 		brne	mem_debug
 		ret
 ;
-.endif
 ;	
 ; ######## END OF DEBUG ROUTINES #########
 ;
