@@ -88,6 +88,8 @@
 ;		- menu_init done
 ;		- menu_loop done
 ;		- main menu defined, and works :-)
+;		- model select
+;		- debug screen
 
 
 ;TODO
@@ -429,8 +431,8 @@ reset:
 
 		rcall	trims_find		;find trim data for sticks
 		
-		ldi	temp,4			;HACK
-		sts	cur_model,temp
+		;ldi	temp,4			;HACK
+		;sts	cur_model,temp
 		rcall	model_load		;load last used model
 
 		ori	statush,(1<<STATUS_CHANGED)	;draw status bar
@@ -477,10 +479,13 @@ main_menu_1:
 		;something pressed!
 		lds	temp,menu_pos
 		cpi	temp,0xff	;ESC
-		breq	main_menu_1	;do nothing
+		breq	main_menu	;do nothing
 		
 		cpi	temp,2		;debug
 		breq	menu_debug
+		
+		cpi	temp,1
+		breq	model_select
 		
 		rjmp	main_menu
 main_menu_def:	.db	"Main menu",0
@@ -502,6 +507,102 @@ menu_debug_1:
 		brne	menu_debug_1
 		rjmp	main_menu
 ;
+
+
+;
+; # select model
+model_select:
+		;draw menu
+		ldi	ZL,low(model_select_def<<1)
+		ldi	ZH,high(model_select_def<<1)
+		rcall	menu_init
+		
+		m_lcd_set_bg	COLOR_WHITE
+
+		;draw model names
+		ldi	temp,1	;start at 1 model
+model_select_2:
+		ldi	temp2,3		;set text position
+		sts	lcd_txt_x,temp2
+		sts	lcd_txt_y,temp
+		
+		;find name in storage
+		push	temp
+		
+		;model+(3<<6),14,0,"Basic 4CH",0,0
+		ori	temp,(3<<6)	;add bits for comment block
+		push	temp
+		rcall	storage_get_start
+		rcall	storage_get_end		;destroys temp
+		m_lcd_set_fg	COLOR_BLACK
+		pop	temp
+model_select_3:
+		lpm	temp2,Z		;get id
+		cp	temp2,temp	;found this id?
+		brne	model_select_4
+		;found
+		movw	WL,ZL		;for later
+		adiw	ZL,2
+		lpm	temp,Z+
+		tst	temp	;comment with id=0?
+		breq	model_select_5	;in Z we have pointer to text
+		movw	ZL,WL	;not found :-(
+model_select_4:
+		;not found
+		rcall	storage_skip_current	;skip current block, destroys temp3
+		brcc	model_select_3	;loop if not the end of storage
+		;end of storage
+		ldi	ZL,low(model_select_undef<<1)
+		ldi	ZH,high(model_select_undef<<1)
+		m_lcd_set_fg	COLOR_RED
+model_select_5:
+		rcall	lcd_text	;write model name
+		
+		pop	temp
+		inc	temp		;loop
+		cpi	temp,12
+		brne	model_select_2
+
+
+model_select_1:
+		rcall	menu_loop
+		sbrs	statush,MENU_CHANGED
+		rjmp	model_select_1
+		
+		;something pressed
+		lds	temp,menu_pos
+		cpi	temp,0xff	;ESC
+		breq	model_select_e
+		
+		cpi	temp,100	;next page
+		breq	model_select_1	;do nothing right now
+		
+		;set active model!
+		sts	cur_model,temp		;change active model
+		m_eeprom_write	ee_last_model	;save to eeprom
+		rcall	model_load		;load new model
+
+		ori	statush,(1<<STATUS_CHANGED)	;draw status bar
+model_select_e:
+		rjmp	main_menu
+		
+
+model_select_def:	.db	"Select model ",0
+		.db	1," 1",0
+		.db	2," 2",0
+		.db	3," 3",0
+		.db	4," 4",0
+		.db	5," 5",0
+		.db	6," 6",0
+		.db	7," 7",0
+		.db	8," 8",0
+		.db	9," 9",0
+		.db	10,"10",0
+		.db	11,"11",0
+		.db	100,"---> more",0,0xff
+model_select_undef:	.db	"-- not defined --",0
+;
+
 
 ;
 ; helpers for drawing/using menu area
@@ -540,6 +641,7 @@ show_status:
 		;output bars
 		rcall	show_out_bars
 		
+		andi	statush,255-(1<<STATUS_CHANGED)
 		ret
 ;
 
@@ -955,11 +1057,13 @@ menu_keys:
 		brne	menu_keys_1
 		;nothing pressed
 		rcall	show_out_bars	;we need redraw it every time
+		rcall	show_status
 		ret
 menu_keys_1:
 		;wait for key release
 		push	temp
 		rcall	show_out_bars	;redraw bars waiting for key release
+		rcall	show_status
 		pop	temp
 		lds	temp2,keys
 		andi	temp2,(1<<KEY_UP)|(1<<KEY_DOWN)|(1<<KEY_ESC)|(1<<KEY_ENTER)
@@ -1174,6 +1278,8 @@ storage_get_start:
 
 ;
 ; skip current container
+; return: new Z
+; destroys: temp3
 storage_skip_current:
 		adiw	ZL,1		;get block length
 		lpm	temp3,Z
