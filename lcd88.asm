@@ -87,6 +87,7 @@
 ;		- a small housekeeping
 ;		- menu_init done
 ;		- menu_loop done
+;		- main menu defined, and works :-)
 
 
 ;TODO
@@ -446,10 +447,10 @@ reset:
 		; #################### MAIN LOOP #####################
 main_loop:
 
-		rcall	show_out_bars
-		rcall	show_io_values
+		;rcall	show_out_bars
+		;rcall	show_io_values
 		
-		rjmp	main_loop
+		;rjmp	main_loop
 
 		; ################### END OF MAIN LOOP ################
 
@@ -460,6 +461,47 @@ main_loop:
 ; ############    SUBROUTINES    #####################################
 ; ####################################################################
 ; #
+
+
+;
+; main menu
+main_menu:
+		ldi	ZL,low(main_menu_def<<1)
+		ldi	ZH,high(main_menu_def<<1)
+		rcall	menu_init
+main_menu_1:
+		rcall	menu_loop
+		sbrs	statush,MENU_CHANGED
+		rjmp	main_menu_1
+		
+		;something pressed!
+		lds	temp,menu_pos
+		cpi	temp,0xff	;ESC
+		breq	main_menu_1	;do nothing
+		
+		cpi	temp,2		;debug
+		breq	menu_debug
+		
+		rjmp	main_menu
+main_menu_def:	.db	"Main menu",0
+		.db	0,"Trims",0,1,"Model select",0,2,"Debug",0,0xff,0
+;
+
+;
+; # menu debug
+menu_debug:
+		rcall	show_io_values	;draw something
+		rcall	show_out_bars
+		
+		lds	temp,keys	;check for ESC
+		andi	temp,(1<<KEY_ESC)
+		breq	menu_debug
+menu_debug_1:
+		lds	temp,keys	;wait for ESC release
+		andi	temp,(1<<KEY_ESC)
+		brne	menu_debug_1
+		rjmp	main_menu
+;
 
 ;
 ; helpers for drawing/using menu area
