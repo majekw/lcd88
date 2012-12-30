@@ -199,14 +199,14 @@
 ;
 .set		model=3
 		;channels
-		.db	model+(2<<6),6,0,1,0,0		;adc0 input
-		.db	model+(2<<6),6,1,2,0,0		;adc1 input
-		.db	model+(2<<6),6,2,3,0,0		;adc2 input
-		.db	model+(2<<6),6,3,4,0,0		;adc3 input
-		.db	model+(2<<6),6,16,5,0,0		;ch0 out
-		.db	model+(2<<6),6,17,6,0,0		;ch1 out
-		.db	model+(2<<6),6,18,7,0,0		;ch2 out
-		.db	model+(2<<6),6,19,8,0,0		;ch3 out
+		;.db	model+(2<<6),6,0,1,0,0		;adc0 input
+		;.db	model+(2<<6),6,1,2,0,0		;adc1 input
+		;.db	model+(2<<6),6,2,3,0,0		;adc2 input
+		;.db	model+(2<<6),6,3,4,0,0		;adc3 input
+		;.db	model+(2<<6),6,16,5,0,0		;ch0 out
+		;.db	model+(2<<6),6,17,6,0,0		;ch1 out
+		;.db	model+(2<<6),6,18,7,0,0		;ch2 out
+		;.db	model+(2<<6),6,19,8,0,0		;ch3 out
 		.db	model+(2<<6),6,28,9,0,0		;ch0 trim (default 0)
 		.db	model+(2<<6),6,29,10,0,0	;ch1 trim
 		.db	model+(2<<6),6,30,11,0,0	;ch2 trim
@@ -235,14 +235,14 @@
 		
 		;decriptions
 		.db	model+(3<<6),10,0,"Auto ",0,0
-		.db	model+(3<<6),12,1,"input 1",0,0
-		.db	model+(3<<6),12,2,"input 2",0,0
-		.db	model+(3<<6),12,3,"input 3",0,0
-		.db	model+(3<<6),12,4,"input 4",0,0
-		.db	model+(3<<6),12,5,"output 1",0
-		.db	model+(3<<6),12,6,"output 2",0
-		.db	model+(3<<6),12,7,"output 3",0
-		.db	model+(3<<6),12,8,"output 4",0
+		;.db	model+(3<<6),12,1,"input 1",0,0
+		;.db	model+(3<<6),12,2,"input 2",0,0
+		;.db	model+(3<<6),12,3,"input 3",0,0
+		;.db	model+(3<<6),12,4,"input 4",0,0
+		;.db	model+(3<<6),12,5,"output 1",0
+		;.db	model+(3<<6),12,6,"output 2",0
+		;.db	model+(3<<6),12,7,"output 3",0
+		;.db	model+(3<<6),12,8,"output 4",0
 		.db	model+(3<<6),12,9,"ch1 trim",0
 		.db	model+(3<<6),12,10,"ch2 trim",0
 		.db	model+(3<<6),12,11,"ch3 trim",0
