@@ -86,7 +86,7 @@
 ;		- print dec value of channel
 ;		- a small housekeeping
 ;		- menu_init done
-;		- menu_loop started (drawing done, to do: keys)
+;		- menu_loop done
 
 
 ;TODO
@@ -184,7 +184,7 @@
 .equ	BAR_OV=2		;needed for showing bars
 .equ	EXTENDER=3		;extender present?
 .equ	MENU_REDRAW=4		;menu needs redrawing?
-.equ	MENU_CHANGED=5		;menu item selected/key pressed
+.equ	MENU_CHANGED=5		;menu item selected/esc or enter key pressed
 .equ	FMS_OUT=6		;output FMS PIC compatible frames via rs
 .equ	STATUS_CHANGED=7	;if set, redraw all status line
 
@@ -432,7 +432,7 @@ reset:
 		sts	cur_model,temp
 		rcall	model_load		;load last used model
 
-		ori	statush,(1<<STATUS_CHANGED)
+		ori	statush,(1<<STATUS_CHANGED)	;draw status bar
 		rcall	show_status
 
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
@@ -657,10 +657,12 @@ show_io_values:
 		rcall	menu_body_clear	;clear body
 		
 		m_lcd_set_bg	COLOR_WHITE
-		m_lcd_set_fg	COLOR_BLACK
+		m_lcd_set_fg	COLOR_DKBLUE
 		
 		m_lcd_text_pos	0,SHOW_IO_Y	;header
 		m_lcd_text	show_io_txt2
+
+		m_lcd_set_fg	COLOR_BLACK
 		
 		;draw channel numbers
                 ldi	temp,SHOW_IO_Y+1
@@ -843,8 +845,7 @@ calc_channel_addrY:
 ; ############# menu routines ###########
 
 .dseg
-menu_selected:	.byte	1	;currently selected: 0 - ESC, other = enter pressed
-menu_pos:	.byte	1	;current menu position, 0xff - default
+menu_pos:	.byte	1	;current menu position, 0xff - esc pressed
 menu_def:	.byte	2	;pointer to current menu definition
 .cseg
 ;menu format:
@@ -907,6 +908,92 @@ menu_loop_3:
 		
 menu_keys:
 		;check for keys pressed
+		lds	temp,keys	;check if any interesting key is pressed?
+		andi	temp,(1<<KEY_UP)|(1<<KEY_DOWN)|(1<<KEY_ESC)|(1<<KEY_ENTER)
+		brne	menu_keys_1
+		;nothing pressed
+		rcall	show_out_bars	;we need redraw it every time
+		ret
+menu_keys_1:
+		;wait for key release
+		push	temp
+		rcall	show_out_bars	;redraw bars waiting for key release
+		pop	temp
+		lds	temp2,keys
+		andi	temp2,(1<<KEY_UP)|(1<<KEY_DOWN)|(1<<KEY_ESC)|(1<<KEY_ENTER)
+		brne	menu_keys_1
+		
+		;key released
+		sbrc	temp,KEY_UP
+		rjmp	menu_keys_up
+		sbrc	temp,KEY_DOWN
+		rjmp	menu_keys_down
+		sbrc	temp,KEY_ESC
+		rjmp	menu_keys_esc
+		sbrc	temp,KEY_ENTER
+		rjmp	menu_keys_enter
+		ret		;ignore other keys
+
+menu_keys_up:
+		;now we should find id before current
+		lds	ZL,menu_def
+		lds	ZH,menu_def+1
+		lds	temp3,menu_pos	;get current position
+		mov	temp4,temp3	;init last pos
+menu_keys_up_1:
+		lpm	temp,Z+		;get id
+		cpi	temp,0xff	;check if it's the end
+		breq	menu_keys_up_e
+		cp	temp,temp3	;check for current id
+		breq	menu_keys_up_e
+		;not found, skip to next
+		mov	temp4,temp	;remember last position
+menu_keys_up_2:
+		lpm	temp,Z+		;skip text
+		tst	temp
+		brne	menu_keys_up_2
+		rjmp	menu_keys_up_1
+menu_keys_up_e:
+		sts	menu_pos,temp4	;set new position
+		ori	statush,(1<<MENU_REDRAW)	;force redraw
+		ret
+
+menu_keys_down:
+		;we need find id after current one
+		lds	ZL,menu_def	;address of menu definition
+		lds	ZH,menu_def+1
+		lds	temp3,menu_pos	;get current position
+		mov	temp4,temp3
+menu_keys_down_1:
+		;find current position
+		lpm	temp,Z+
+		cpi	temp,0xff	;end of definition?
+		breq	menu_keys_down_e
+		cp	temp,temp3	;found?
+		breq	menu_keys_down_3
+menu_keys_down_2:
+		lpm	temp,Z+		;skip text part
+		tst	temp
+		brne	menu_keys_down_2
+		rjmp	menu_keys_down_1
+menu_keys_down_3:
+		lpm	temp,Z+		;skip text part
+		tst	temp
+		brne	menu_keys_down_3
+		lpm	temp,Z		;get next id of end of menu
+		cpi	temp,0xff
+		breq	menu_keys_down_e
+		mov	temp4,temp
+menu_keys_down_e:
+		sts	menu_pos,temp4	;set new position
+		ori	statush,(1<<MENU_REDRAW)	;force redraw
+		ret		
+
+menu_keys_esc:
+		ldi	temp,0xff	;esc code
+		sts	menu_pos,temp
+menu_keys_enter:
+		ori	statush,(1<<MENU_CHANGED)	;set flag that something happen in menu
 		ret
 ;
 
