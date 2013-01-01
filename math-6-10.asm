@@ -1,5 +1,5 @@
 ; Fixed point math library: 6.10
-; (C) 2009-2012 Marek Wodzinski majek@mamy.to
+; (C) 2009-2013 Marek Wodzinski majek@mamy.to
 ;
 ; Changelog:
 ; 2009.08.16	- start coding:
@@ -26,7 +26,7 @@
 ; 2012.12.28	- fixed functions using math_compare
 ; 2012.12.29	- math_pop
 ;		- math_todec
-
+; 2013.01.01	- math_todec_byte (not quite 6.10 but reuses a large amount of code from math_todec)
 
 ;
 ; initialize math stack pointer
@@ -409,6 +409,8 @@ math_todec_3:	lsl	mtemp2		;shift5
 		clr	mtemp3		;prepare result
 		clr	mtemp4
 		ldi	temp,16		;shifts count
+
+math_todec_entry:			;this back entry to loop, for example for
 		ldi	temp2,3		;prepare operand to add3
 		mov	temp3,temp2
 math_todec_4:
@@ -453,7 +455,7 @@ math_todec_7:
 		rjmp	math_todec_4
 math_todec_e:
 		;store resut
-		mov	temp,mtemp4
+		mov	temp,mtemp4	;high byte
 		swap	temp
 		andi	temp,0x0f
 		subi	temp,-48
@@ -476,12 +478,23 @@ math_todec_e:
 		ret
 ;
 
+;
+; # convert only one byte to 2 digits
+; in: mtemp4
+; out: ascii at math_todec_out+5..7
+math_todec_byte:
+		;convert fraction to bcd
+		clr	mtemp3		;prepare result
+		clr	mtemp4
+		ldi	temp,8		;shifts count
+		rjmp	math_todec_entry
+
 
 ;
 ; math stack
 .dseg
-math_sp:	.byte	2
-math_stack:	.byte	10
+math_sp:	.byte	2	;math stack pointer
+math_stack:	.byte	10	;stack area
 .cseg
 ;
 
