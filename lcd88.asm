@@ -1,4 +1,4 @@
-; (C) 2009 Marek Wodzinski
+; (C) 2009-2013 Marek Wodzinski
 ; new ppm coder with color lcd
 ;
 ; Changelog
@@ -90,17 +90,14 @@
 ;		- main menu defined, and works :-)
 ;		- model select
 ;		- debug screen
+; 2012.01.02	- added menu_ram_* finctions, old menu_* functions changed, so meny_keys is resuable by both menu functions
 
 
 ;TODO
-; - stage 1
-;   - sticks calibration
-;   - backup/restore
-;   - model change
-;   - trims/reverse
-; - stage 2
-;   - rest...
-
+; - find storage_end on boot!
+; - trims
+; - reverses
+; - expo
 
 .nolist
 ;standard header for atmega88 or mega168
@@ -481,15 +478,15 @@ main_menu_1:
 		cpi	temp,0xff	;ESC
 		breq	main_menu	;do nothing
 		
-		cpi	temp,2		;debug
+		cpi	temp,3		;debug
 		breq	menu_debug
 		
-		cpi	temp,1
+		cpi	temp,2		;model select
 		breq	model_select
 		
 		rjmp	main_menu
 main_menu_def:	.db	"Main menu",0
-		.db	0,"Trims",0,1,"Model select",0,2,"Debug",0,0xff,0
+		.db	0,"Trims",0,1,"Reverse",0,2,"Model select",0,3,"Debug",0,0xff
 ;
 
 ;
@@ -991,6 +988,7 @@ calc_channel_addrY:
 .dseg
 menu_pos:	.byte	1	;current menu position, 0xff - esc pressed
 menu_def:	.byte	2	;pointer to current menu definition
+menu_ram:	.byte	13	;space for menu numbers, should be 0xfe terminated
 .cseg
 ;menu format:
 ;	0 - header text (null terminated)
@@ -1024,6 +1022,8 @@ menu_loop:
 		rjmp	menu_keys
 		
 		;redrawing menu
+		ldi	YL,low(menu_ram)	;address of menu items list
+		ldi	YH,high(menu_ram)
 		ldi	temp2,1		;first Y of menu
 		lds	ZL,menu_def	;get address of the rest
 		lds	ZH,menu_def+1
@@ -1031,6 +1031,7 @@ menu_loop_1:
 		sts	lcd_txt_x,zero	;set position
 		sts	lcd_txt_y,temp2
 		lpm	temp,Z+		;get menu position id
+		st	Y+,temp		;store in buffer for later
 		lds	temp3,menu_pos
 		cp	temp,temp3	;is it current position?
 		breq	menu_loop_2
@@ -1050,6 +1051,9 @@ menu_loop_3:
 		cpi	temp,0xff	;end of menu?
 		brne	menu_loop_1
 		
+		ldi	temp,0xfe	;save end of menu mark
+		st	Y,temp
+;needs		
 menu_keys:
 		;check for keys pressed
 		lds	temp,keys	;check if any interesting key is pressed?
@@ -1082,22 +1086,18 @@ menu_keys_1:
 
 menu_keys_up:
 		;now we should find id before current
-		lds	ZL,menu_def
-		lds	ZH,menu_def+1
+		ldi	YL,low(menu_ram)
+		ldi	YH,high(menu_ram)
 		lds	temp3,menu_pos	;get current position
 		mov	temp4,temp3	;init last pos
 menu_keys_up_1:
-		lpm	temp,Z+		;get id
-		cpi	temp,0xff	;check if it's the end
+		ld	temp,Y+		;get id
+		cpi	temp,0xfe	;check if it's the end
 		breq	menu_keys_up_e
 		cp	temp,temp3	;check for current id
 		breq	menu_keys_up_e
 		;not found, skip to next
 		mov	temp4,temp	;remember last position
-menu_keys_up_2:
-		lpm	temp,Z+		;skip text
-		tst	temp
-		brne	menu_keys_up_2
 		rjmp	menu_keys_up_1
 menu_keys_up_e:
 		sts	menu_pos,temp4	;set new position
@@ -1106,28 +1106,21 @@ menu_keys_up_e:
 
 menu_keys_down:
 		;we need find id after current one
-		lds	ZL,menu_def	;address of menu definition
-		lds	ZH,menu_def+1
+		ldi	YL,low(menu_ram)
+		ldi	YH,high(menu_ram)
 		lds	temp3,menu_pos	;get current position
 		mov	temp4,temp3
 menu_keys_down_1:
 		;find current position
-		lpm	temp,Z+
-		cpi	temp,0xff	;end of definition?
+		ld	temp,Y+
+		cpi	temp,0xfe	;end of definition?
 		breq	menu_keys_down_e
 		cp	temp,temp3	;found?
 		breq	menu_keys_down_3
-menu_keys_down_2:
-		lpm	temp,Z+		;skip text part
-		tst	temp
-		brne	menu_keys_down_2
 		rjmp	menu_keys_down_1
 menu_keys_down_3:
-		lpm	temp,Z+		;skip text part
-		tst	temp
-		brne	menu_keys_down_3
-		lpm	temp,Z		;get next id of end of menu
-		cpi	temp,0xff
+		ld	temp,Y		;get next id of end of menu
+		cpi	temp,0xfe
 		breq	menu_keys_down_e
 		mov	temp4,temp
 menu_keys_down_e:
@@ -1142,6 +1135,74 @@ menu_keys_enter:
 		ori	statush,(1<<MENU_CHANGED)	;set flag that something happen in menu
 		ret
 ;
+
+;
+; # custom menu from ram
+; in: Z - address of menu description
+menu_ram_init:
+		push	ZL
+		push	ZH
+		rcall	top_bar_clear	;clear top bar (destroys Z)
+		pop	ZH
+		pop	ZL
+		rcall	top_bar_text	;print something in top bar
+		lds	temp,menu_ram	;get first id
+		sts	menu_pos,temp	;and store it as first selected
+		rcall	menu_body_clear	;clear body area
+		andi	statush,~(1<<MENU_CHANGED)	;clear 'dirty' flag
+		ori	statush,(1<<MENU_REDRAW)	;force first menu redraw
+
+menu_ram_loop:
+		;here is main loop
+		sbrs	statush,MENU_REDRAW	;skip drawing if not needed
+		rjmp	menu_keys
+		
+		;redrawing menu
+		ldi	XL,low(menu_ram)	;address of menu items list
+		ldi	XH,high(menu_ram)
+		ldi	temp2,1		;first Y of menu
+menu_ram_loop_1:
+		sts	lcd_txt_x,zero	;set position
+		sts	lcd_txt_y,temp2
+		ld	temp4,X+		;get menu position id
+		lds	temp3,menu_pos	;get current position
+		cp	temp4,temp3	;is it current position?
+		breq	menu_ram_loop_2
+		;no, default colors
+		m_lcd_set_bg	COLOR_WHITE
+		m_lcd_set_fg	COLOR_BLACK
+		rjmp	menu_ram_loop_3
+menu_ram_loop_2:
+		m_lcd_set_bg	COLOR_BLACK
+		m_lcd_set_fg	COLOR_WHITE
+menu_ram_loop_3:
+		;convert menu id into chars
+		push	temp4
+		push	temp2
+
+		mov	mtemp1,temp4	;convert it to ascii
+		rcall	math_todec_byte		
+
+		ldi	ZL,low(math_todec_out)	;print output
+		ldi	ZH,high(math_todec_out)
+		ldd	temp,Z+6
+		sts     lcd_arg1,temp2
+		rcall	lcd_char
+		ldd	temp,Z+7
+		sts     lcd_arg1,temp2
+		rcall	lcd_char
+		
+		pop	temp2
+		pop	temp4
+		
+		inc	temp2		;inc Y position
+		ld	temp,X		;get next id
+		cpi	temp,0xfe	;end of menu?
+		brne	menu_ram_loop_1
+		
+		ret
+;
+
 
 ;
 ; ########### eeprom routines ###########
