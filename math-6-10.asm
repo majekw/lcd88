@@ -480,8 +480,9 @@ math_todec_e:
 
 ;
 ; # convert only one byte to 2 digits
-; in: mtemp4
+; in: mtemp2
 ; out: ascii at math_todec_out+5..7
+; destroyed: mtemp1..4,temp,temp2,r0,Y
 math_todec_byte:
 		;convert fraction to bcd
 		clr	mtemp3		;prepare result
