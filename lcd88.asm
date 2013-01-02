@@ -97,7 +97,7 @@
 ; - find storage_end on boot!
 ; - trims
 ; - reverses
-; - expo
+; - expo ( x*(y*x*x+1-y) )
 
 .nolist
 ;standard header for atmega88 or mega168
@@ -1384,7 +1384,7 @@ storage_find_1:
 		movw	WL,ZL		;save Z
 storage_find_2:
 		rcall	storage_skip_current
-		brcc	storage_find_1
+		brcc	storage_find_1	;loop until end of storage
 		movw	ZL,WL		;restore last Z
 		ret
 ;
