@@ -87,69 +87,69 @@
 ; basic 4 ch model - no mixers, just dumb way to copy sticks to output channels
 ;	with comments to each channels (nice example)
 ;
-.set		model=1
-		;channels
-		.db	model+(2<<6),6,0,1,0,0		;adc0 input
-		.db	model+(2<<6),6,1,2,0,0		;adc1 input
-		.db	model+(2<<6),6,2,3,0,0		;adc2 input
-		.db	model+(2<<6),6,3,4,0,0		;adc3 input
-		.db	model+(2<<6),6,16,5,0,0		;ch0 out
-		.db	model+(2<<6),6,17,6,0,0		;ch1 out
-		.db	model+(2<<6),6,18,7,0,0		;ch2 out
-		.db	model+(2<<6),6,19,8,0,0		;ch3 out
-		.db	model+(2<<6),6,28,9,0,0		;ch0 trim (default 0)
-		.db	model+(2<<6),6,29,10,0,0	;ch1 trim
-		.db	model+(2<<6),6,30,11,0,0	;ch2 trim
-		.db	model+(2<<6),6,31,12,0,0	;ch3 trim
-		.db	model+(2<<6),6,40,13,0,4	;ch0 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,41,14,0,4	;ch1 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,42,15,0,4	;ch2 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,43,16,0,4	;ch3 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,52,0,0,0	;ch0 connection between trim and inverse
-		.db	model+(2<<6),6,53,0,0,0	;ch1 connection between trim and inverse
-		.db	model+(2<<6),6,54,0,0,0	;ch2 connection between trim and inverse
-		.db	model+(2<<6),6,55,0,0,0	;ch3 connection between trim and inverse
-
-		;blocks
-		.db	model+(0<<6),10,1,21,1,2,1,0,28,52	;trim for ch0
-		.db	model+(0<<6),10,2,22,1,2,1,1,29,53	;trim for ch1
-		.db	model+(0<<6),10,3,23,1,2,1,2,30,54	;trim for ch2
-		.db	model+(0<<6),10,4,24,1,2,1,3,31,55	;trim for ch3
-		.db	model+(0<<6),10,5,25,2,2,1,52,40,16	;reverse for ch0
-		.db	model+(0<<6),10,6,26,2,2,1,53,41,17	;reverse for ch1
-		.db	model+(0<<6),10,7,27,2,2,1,54,42,18	;reverse for ch2
-		.db	model+(0<<6),10,8,28,2,2,1,55,43,19	;reverse for ch3
-		
-		;block processing order
-		.db	model+(1<<6),10,1,2,3,4,5,6,7,8
-		
-		;decriptions
-		.db	model+(3<<6),14,0,"Basic 4CH",0,0
-		.db	model+(3<<6),12,1,"input 1",0,0
-		.db	model+(3<<6),12,2,"input 2",0,0
-		.db	model+(3<<6),12,3,"input 3",0,0
-		.db	model+(3<<6),12,4,"input 4",0,0
-		.db	model+(3<<6),12,5,"output 1",0
-		.db	model+(3<<6),12,6,"output 2",0
-		.db	model+(3<<6),12,7,"output 3",0
-		.db	model+(3<<6),12,8,"output 4",0
-		.db	model+(3<<6),12,9,"ch1 trim",0
-		.db	model+(3<<6),12,10,"ch2 trim",0
-		.db	model+(3<<6),12,11,"ch3 trim",0
-		.db	model+(3<<6),12,12,"ch4 trim",0
-		.db	model+(3<<6),16,13,"ch1 reverse",0,0
-		.db	model+(3<<6),16,14,"ch2 reverse",0,0
-		.db	model+(3<<6),16,15,"ch3 reverse",0,0
-		.db	model+(3<<6),16,16,"ch4 reverse",0,0
-		.db	model+(3<<6),16,21,"trim for ch1",0
-		.db	model+(3<<6),16,22,"trim for ch2",0
-		.db	model+(3<<6),16,23,"trim for ch3",0
-		.db	model+(3<<6),16,24,"trim for ch4",0
-		.db	model+(3<<6),20,25,"reverse for ch1",0,0
-		.db	model+(3<<6),20,26,"reverse for ch2",0,0
-		.db	model+(3<<6),20,27,"reverse for ch3",0,0
-		.db	model+(3<<6),20,28,"reverse for ch4",0,0
-
+;.set		model=1
+;		;channels
+;		.db	model+(2<<6),6,0,1,0,0		;adc0 input
+;		.db	model+(2<<6),6,1,2,0,0		;adc1 input
+;		.db	model+(2<<6),6,2,3,0,0		;adc2 input
+;		.db	model+(2<<6),6,3,4,0,0		;adc3 input
+;		.db	model+(2<<6),6,16,5,0,0		;ch0 out
+;		.db	model+(2<<6),6,17,6,0,0		;ch1 out
+;		.db	model+(2<<6),6,18,7,0,0		;ch2 out
+;		.db	model+(2<<6),6,19,8,0,0		;ch3 out
+;		.db	model+(2<<6),6,28,9,0,0		;ch0 trim (default 0)
+;		.db	model+(2<<6),6,29,10,0,0	;ch1 trim
+;		.db	model+(2<<6),6,30,11,0,0	;ch2 trim
+;		.db	model+(2<<6),6,31,12,0,0	;ch3 trim
+;		.db	model+(2<<6),6,40,13,0,4	;ch0 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,41,14,0,4	;ch1 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,42,15,0,4	;ch2 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,43,16,0,4	;ch3 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,52,0,0,0	;ch0 connection between trim and inverse
+;		.db	model+(2<<6),6,53,0,0,0	;ch1 connection between trim and inverse
+;		.db	model+(2<<6),6,54,0,0,0	;ch2 connection between trim and inverse
+;		.db	model+(2<<6),6,55,0,0,0	;ch3 connection between trim and inverse
+;
+;		;blocks
+;		.db	model+(0<<6),10,1,21,1,2,1,0,28,52	;trim for ch0
+;		.db	model+(0<<6),10,2,22,1,2,1,1,29,53	;trim for ch1
+;		.db	model+(0<<6),10,3,23,1,2,1,2,30,54	;trim for ch2
+;		.db	model+(0<<6),10,4,24,1,2,1,3,31,55	;trim for ch3
+;		.db	model+(0<<6),10,5,25,2,2,1,52,40,16	;reverse for ch0
+;		.db	model+(0<<6),10,6,26,2,2,1,53,41,17	;reverse for ch1
+;		.db	model+(0<<6),10,7,27,2,2,1,54,42,18	;reverse for ch2
+;		.db	model+(0<<6),10,8,28,2,2,1,55,43,19	;reverse for ch3
+;		
+;		;block processing order
+;		.db	model+(1<<6),10,1,2,3,4,5,6,7,8
+;		
+;		;decriptions
+;		.db	model+(3<<6),14,0,"Basic 4CH",0,0
+;		.db	model+(3<<6),12,1,"input 1",0,0
+;		.db	model+(3<<6),12,2,"input 2",0,0
+;		.db	model+(3<<6),12,3,"input 3",0,0
+;		.db	model+(3<<6),12,4,"input 4",0,0
+;		.db	model+(3<<6),12,5,"output 1",0
+;		.db	model+(3<<6),12,6,"output 2",0
+;		.db	model+(3<<6),12,7,"output 3",0
+;		.db	model+(3<<6),12,8,"output 4",0
+;		.db	model+(3<<6),12,9,"ch1 trim",0
+;		.db	model+(3<<6),12,10,"ch2 trim",0
+;		.db	model+(3<<6),12,11,"ch3 trim",0
+;		.db	model+(3<<6),12,12,"ch4 trim",0
+;		.db	model+(3<<6),16,13,"ch1 reverse",0,0
+;		.db	model+(3<<6),16,14,"ch2 reverse",0,0
+;		.db	model+(3<<6),16,15,"ch3 reverse",0,0
+;		.db	model+(3<<6),16,16,"ch4 reverse",0,0
+;		.db	model+(3<<6),16,21,"trim for ch1",0
+;		.db	model+(3<<6),16,22,"trim for ch2",0
+;		.db	model+(3<<6),16,23,"trim for ch3",0
+;		.db	model+(3<<6),16,24,"trim for ch4",0
+;		.db	model+(3<<6),20,25,"reverse for ch1",0,0
+;		.db	model+(3<<6),20,26,"reverse for ch2",0,0
+;		.db	model+(3<<6),20,27,"reverse for ch3",0,0
+;		.db	model+(3<<6),20,28,"reverse for ch4",0,0
+;
 ; simple 2 channel delta - minimalistic scenario without descriptions (and made without delta special block)
 ; ch0 --trim--ch52--reverse--ch53--mul--ch54---add---out0
 ;       ch28         ch40          ch32      \   \---------\
