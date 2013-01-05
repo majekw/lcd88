@@ -27,6 +27,7 @@
 ; 2012.12.29	- math_pop
 ;		- math_todec
 ; 2013.01.01	- math_todec_byte (not quite 6.10 but reuses a large amount of code from math_todec)
+; 2012.01.05	- small size optimization (saved 24B)
 
 ;
 ; initialize math stack pointer
@@ -78,9 +79,8 @@ math_add_1:
 		st	Y+,mtemp1		;store result
 		st	Y+,mtemp2
 
-		rcall	math_set_sp		;update stack pointer
-math_ret:
-		ret
+		rjmp	math_set_sp		;update stack pointer
+		;ret
 ;
 
 
@@ -157,8 +157,8 @@ math_sign_calc_1:
 		ret
 		ldi	temp,(1<<MATH_SIGN)
 		eor	statush,temp		;prepare sign
-		rcall	math_neg		;negate operand
-		ret
+		rjmp	math_neg		;negate operand
+		;ret
 ;
 
 
@@ -226,9 +226,9 @@ math_mul_1:
 		rcall	math_set_sp		;update stack pointer
 		
 		sbrc	statush,MATH_SIGN	;restore sign
-		rcall	math_neg
+		rjmp	math_neg
 
-		ret
+		;ret
 ;
 
 
@@ -255,8 +255,8 @@ math_sub:
 		st	Y,mtemp1	;store result
 		std	Y+1,mtemp2
 
-		rcall	math_drop
-		ret
+		rjmp	math_drop
+		;ret
 ;
 
 
@@ -267,8 +267,8 @@ math_min:
 		brge	math_min_1
 		rcall	math_swap
 math_min_1:
-		rcall	math_drop
-		ret
+		rjmp	math_drop
+		;ret
 ;
 
 ;
@@ -278,21 +278,21 @@ math_max:
 		brlt	math_max_1
 		rcall	math_swap
 math_max_1:
-		rcall	math_drop
-		ret
+		rjmp	math_drop
+		;ret
 ;
 
 ;
 ; division
-math_div:
-		rcall	math_sign_calc		;get sign
-
-		; TODO
-		
-		sbrc	statush,MATH_SIGN	;restore sign
-		rcall	math_neg
-
-		ret
+;math_div:
+;		rcall	math_sign_calc		;get sign
+;
+;		; TODO
+;		
+;		sbrc	statush,MATH_SIGN	;restore sign
+;		rcall	math_neg
+;
+;		ret
 ;
 
 ;
@@ -316,8 +316,8 @@ math_pop:
 		sbiw	YL,2
 		ld	mtemp1,Y
 		ldd	mtemp2,Y+1
-		rcall	math_set_sp
-		ret
+		rjmp	math_set_sp
+		;ret
 ;
 
 ;
@@ -325,8 +325,8 @@ math_pop:
 math_drop:
 		rcall	math_get_sp
 		sbiw	YL,2
-		rcall	math_set_sp
-		ret
+		rjmp	math_set_sp
+		;ret
 ;
 
 ;
