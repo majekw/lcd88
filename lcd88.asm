@@ -92,10 +92,12 @@
 ;		- debug screen
 ; 2012.01.02	- added menu_ram_* finctions, old menu_* functions changed, so menu_keys is resuable by both menu functions
 ; 2012.01.05	- trims for my transmitter
+; 2012.01.06	- find end of storage instead of reding it from eeprom (it never worked)
+;		- removed hack, so eeprom is initialized only after major version change
+;		- changing model survives reboot :-)
 
 
 ;TODO
-; - find storage_end on boot!
 ; - trims
 ; - reverses
 ; - expo ( x*(y*x*x+1-y) )
@@ -130,7 +132,7 @@
 .equ	BLOCKS_MAX=128		;253 is absolute max
 .equ	EE_SIG1=0xaa		;first byte of eeprom signature
 .equ	EE_SIG2=0x55		;second byte of eeprom signature
-.equ	EE_VERSION=1		;must be changed if eeprom format will change
+.equ	EE_VERSION=2		;must be changed if eeprom format will change
 .equ	TRIM_BYTES=10		;how much bytes are used to trim each a/c channel to produce -1..1 result
 .equ	PPM_INTERVAL=20		;20ms for each frame
 .equ	PPM_SYNC=ZEGAR*3/10000	;0.3ms
@@ -362,6 +364,9 @@ reset:
 		ldi	YH,high(SRAM_SIZE-2)
 		rcall	clear_ram
 		
+		;initialize end of flash data position
+		rcall	storage_find_end
+
 		;get some data from eeprom (initialize also status register)
 		rcall	eeprom_init
 
@@ -429,9 +434,7 @@ reset:
 
 		rcall	trims_find		;find trim data for sticks
 		
-		;ldi	temp,4			;HACK
-		;sts	cur_model,temp
-		rcall	model_load		;load last used model
+		rcall	model_load		;load last used model (read from eeprom)
 
 		ori	statush,(1<<STATUS_CHANGED)	;draw status bar
 		rcall	show_status
@@ -1232,7 +1235,7 @@ eeprom_init:
 		in	temp,EEDR
 		cpi	temp,EE_VERSION
 		brne	eeprom_init_1
-		rjmp	eeprom_init_1	;HACK
+		;rjmp	eeprom_init_1	;HACK
 		
 		;read some values from eeprom
 		m_eeprom_read	ee_last_model		;restore last used model
@@ -1270,12 +1273,6 @@ eeprom_init_1:
 		sts	cur_model,temp		;store also as current model
 		m_eeprom_write	ee_last_model
 		
-		;initialize end of flash data position
-		ldi	temp,low(storage_end<<1)
-		m_eeprom_write	ee_storage_end
-		adiw	XL,1
-		ldi	temp,high(storage_end<<1)
-		rcall	eeprom_write
 		
 		;status registers
 		ldi	temp,(1<<ADC_FILTER)|(1<<PPM_POL)|(1<<ADC_FILTER4)
@@ -1319,23 +1316,49 @@ eeprom_write_1:
 
 
 ;
-; get storage end from eeprom and store it in X
-; destroyed: temp
+; get storage end and store it in X
 storage_get_end:
-		m_eeprom_read	ee_storage_endl		;end of data in flash
-		mov	XL,temp
-		m_eeprom_read	ee_storage_endh
-		mov	XH,temp
+		lds	XL,storage_end
+		lds	XH,storage_end+1
 		ret
 ;
+
 
 ;
 ; get beginning of storage
 storage_get_start:
-		ldi	ZL,low(storage_start<<1)	;start of flash
+		ldi	ZL,low(storage_start<<1)	;start of flash storage
 		ldi	ZH,high(storage_start<<1)
 		ret
 ;
+
+
+;
+; find real storage end, 'block' with 0xffff
+; out: Z - storage end address
+; destroys: temp,temp2
+storage_find_end:
+		rcall	storage_get_start
+storage_find_end_1:
+		lpm	temp,Z+
+		lpm	temp2,Z+
+		cpi	temp,0xff
+		brne	storage_find_end_2
+		cp	temp,temp2
+		brne	storage_find_end_2
+		;end found!
+		sbiw	ZL,2
+		sts	storage_end,ZL
+		sts	storage_end+1,ZH
+		ret
+storage_find_end_2:
+		;not found, skip current block and go to next
+		sbiw	ZL,2	;restore pointer
+		add	ZL,temp2
+		adc	ZH,zero
+		rjmp	storage_find_end_1
+;
+
 
 
 ;
@@ -2708,7 +2731,7 @@ ch_trims:	.dw	544		;center position for channel 0
 
 ; ####### INCLUDE HARDCODED MODEL DEFINITIONS #############
 .include "models.asm"
-storage_end:
+;storage_end:
 		.dw	0xffff
 
 ;
@@ -2741,6 +2764,7 @@ sequence:	.byte	2		;pointer to processing sequence block
 cur_model:	.byte	1		;current model
 trims:		.byte	2		;pointer to trims data
 model_name:	.byte	2		;pointer to model name
+storage_end:	.byte	2		;pointer to end of flash storage
 ;wr_tmp:		.byte	PAGESIZE*2	;buffer for flash write (pagesize is in words, so 2x for bytes!)
 ;
 
@@ -2761,9 +2785,6 @@ model_name:	.byte	2		;pointer to model name
 eesig:		.db	EE_SIG1,EE_SIG2	;signature
 		.db	EE_VERSION		;eeprom variables version
 ee_last_model:	.db	1
-ee_storage_end:	
-ee_storage_endl: .db	low(storage_end<<1)
-ee_storage_endh: .db	high(storage_end<<1)
 ee_status:	.db	0
 ee_statush:	.db	0
 
