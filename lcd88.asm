@@ -90,7 +90,8 @@
 ;		- main menu defined, and works :-)
 ;		- model select
 ;		- debug screen
-; 2012.01.02	- added menu_ram_* finctions, old menu_* functions changed, so meny_keys is resuable by both menu functions
+; 2012.01.02	- added menu_ram_* finctions, old menu_* functions changed, so menu_keys is resuable by both menu functions
+; 2012.01.05	- trims for my transmitter
 
 
 ;TODO
@@ -772,14 +773,14 @@ lcd_initialize:
 ;		m_lcd_set_bg	COLOR_BLACK
 ;		m_lcd_set_fg	COLOR_CYAN
 
-		m_lcd_text_pos	0,0
+		;m_lcd_text_pos	0,0
 		;m_lcd_text	banner
 ;
 		
-		m_lcd_set_bg	COLOR_WHITE	;set default colors
-		m_lcd_set_fg	COLOR_BLACK
+		;m_lcd_set_bg	COLOR_WHITE	;set default colors
+		;m_lcd_set_fg	COLOR_BLACK
 		ret
-banner:		.db	"(C) 2007-2012 Marek Wodzinski",0
+;banner:		.db	"(C) 2007-2012 Marek Wodzinski",0
 ;
 
 
@@ -1601,26 +1602,26 @@ task_calc_1:	;main processing loop (Z points to block number, temp contains numb
 		breq	task_calc_mul
 		cpi	temp,4		;multiply
 		breq	task_calc_mul
-		cpi	temp,3		;limit
-		breq	task_calc_limit
+		;cpi	temp,3		;limit
+		;breq	task_calc_limit
 		cpi	temp,5		;digital input
 		breq	task_calc_digin
-		cpi	temp,6		;multiplexer
-		breq	task_calc_mux
-		cpi	temp,7		;limit detector
-		breq	task_calc_det
-		cpi	temp,8		;minimum
-		breq	task_calc_min
-		cpi	temp,9		;maximum
-		breq	task_calc_max
-		cpi	temp,10		;delta mixer
-		breq	task_calc_delta
+		;cpi	temp,6		;multiplexer
+		;breq	task_calc_mux
+		;cpi	temp,7		;limit detector
+		;breq	task_calc_det
+		;cpi	temp,8		;minimum
+		;breq	task_calc_min
+		;cpi	temp,9		;maximum
+		;breq	task_calc_max
+		;cpi	temp,10		;delta mixer
+		;breq	task_calc_delta
 		cpi	temp,11		;substract
 		breq	task_calc_sub
-		cpi	temp,13		;compare
-		breq	task_calc_compare
-		cpi	temp,14		;absolute value
-		breq	task_calc_abs
+		;cpi	temp,13		;compare
+		;breq	task_calc_compare
+		;cpi	temp,14		;absolute value
+		;breq	task_calc_abs
 		cpi	temp,15		;negation
 		breq	task_calc_neg
 		
@@ -1675,7 +1676,7 @@ task_calc_abs:
 ;   8 - min			2	1	(2x in)		X=min(A,B)
 ;   9 - max			2	1	(2x in)		X=max(A,B)
 ;   10 - delta			2	2	(2x in)		X=(A+B)/2, Y=(A-B)/2
-;   11 - sub			2	1	(2x in)		X=A-B
+; * 11 - sub			2	1	(2x in)		X=A-B
 ; * 12 - adder			2	1	(2x in)		X=A+B
 ;   13 - compare		2	1	(2x in)		X=0 if A=B,X=-1 if A<B, X=1 if A>B
 ;   14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
@@ -2246,11 +2247,11 @@ adcc_4:
 		adiw	ZL,4			;skip values for lower half
 adcc_5:
 		lpm	itemp,Z+		;multiply by a
-		lpm	itemp2,Z+
-		clr	XH
+		lpm	itemp2,Z+		;itemp2:itemp1 * itemp4:itemp3
+		clr	XH			;prepare result
 		clr	XL
-		mul	itemp,itemp3
-		mov	r3,r1
+		mul	itemp,itemp3		
+		mov	r3,r1			;store partial result: r1, r0 dropped
 		mul	itemp,itemp4
 		add	r3,r0
 		adc	XL,r1
@@ -2652,17 +2653,58 @@ task_space:	.byte	26
 ;
 storage_start:
 		.db	0,84,0,0	;header
-ch_trims:	.dw	0x01FF		;center position for channel 0
-		.dw	0x0800		;a=2
-		.dw	0xFC00		;b=-1
-		.dw	0x0800,0xFC00	;a,b for second half
-		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 1
-		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 2
-		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 3
-		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 4
-		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 5
-		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 6
-		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 7
+;ch_trims:	.dw	0x01FF		;center position for channel 0
+;		.dw	0x0800		;a=2
+;		.dw	0xFC00		;b=-1
+;		.dw	0x0800,0xFC00	;a,b for second half
+;		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 1
+;		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 2
+;		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 3
+;		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 4
+;		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 5
+;		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 6
+;		.dw	0x01ff,0x0800,0xfc00,0x0800,0xfc00	;channel 7
+
+ch_trims:	.dw	544		;center position for channel 0
+		.dw	2048+314	;a1
+		.dw	65536-1255	;b1
+		.dw	2048+648	;a2
+		.dw	65536-1432	;b2
+		.dw	538		;channel 1
+		.dw	2048+242	;a1
+		.dw	65536-1203	;b1
+		.dw	2048+314	;a2
+		.dw	65536-1241	;b2
+		.dw	470		;channel 2
+		.dw	2048+705	;a1
+		.dw	65536-1264	;b1
+		.dw	2048+369
+		.dw	65536-1109
+		.dw	541		;channel 3
+		.dw	2048+581
+		.dw	65536-1389
+		.dw	2048+574
+		.dw	65536-1385
+		.dw	510		;channel 4
+		.dw	2048+9
+		.dw	65536-1024
+		.dw	2048+5
+		.dw	65536-1022
+		.dw	510		;channel 5
+		.dw	2048+9
+		.dw	65536-1024
+		.dw	2048+5
+		.dw	65536-1022
+		.dw	510		;channel 6
+		.dw	2048+9
+		.dw	65536-1024
+		.dw	2048+5
+		.dw	65536-1022
+		.dw	510		;channel 7
+		.dw	2048+9
+		.dw	65536-1024
+		.dw	2048+5
+		.dw	65536-1022
 
 ; ####### INCLUDE HARDCODED MODEL DEFINITIONS #############
 .include "models.asm"
