@@ -96,7 +96,7 @@
 ;		- removed hack, so eeprom is initialized only after major version change
 ;		- changing model survives reboot :-)
 ;		- changed storage_find to not use mask, instead it looks for specific block id
-
+;		- changed storage_skip_current and removed storage_get_end
 
 ;TODO
 ; - trims
@@ -535,7 +535,6 @@ model_select_2:
 		ori	temp,(3<<6)	;add bits for comment block
 		push	temp
 		rcall	storage_get_start
-		rcall	storage_get_end		;destroys temp
 		m_lcd_set_fg	COLOR_BLACK
 		pop	temp
 model_select_3:
@@ -1317,15 +1316,6 @@ eeprom_write_1:
 
 
 ;
-; get storage end and store it in X
-storage_get_end:
-		lds	XL,storage_end
-		lds	XH,storage_end+1
-		ret
-;
-
-
-;
 ; get beginning of storage
 storage_get_start:
 		ldi	ZL,low(storage_start<<1)	;start of flash storage
@@ -1374,8 +1364,10 @@ storage_skip_current:
 		sbiw	ZL,1		;calculate next address
 		add	ZL,temp3	;add block length
 		adc	ZH,zero
-		cp	ZL,XL		;check if memory end
-		cpc	ZH,XH
+		lds	temp3,storage_end
+		cp	ZL,temp3	;check if memory end
+		lds	temp3,storage_end+1
+		cpc	ZH,temp3
 		brcc	storage_skip_current_ee
 		clc
 		ret
@@ -1399,7 +1391,6 @@ storage_find:
 		clr	WL		;prepare result
 		clr	WH
 		rcall	storage_get_start
-		rcall	storage_get_end
 storage_find_1:
 		lpm	r0,Z		;get model, block type etc
 		cp	r0,temp		;check block type
@@ -1466,7 +1457,6 @@ model_load:
 		sts	sequence+1,zero
 
 		rcall	storage_get_start
-		rcall	storage_get_end
 		lds	temp4,cur_model			;get model_id
 		
 model_load_1:
