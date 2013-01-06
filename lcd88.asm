@@ -95,6 +95,7 @@
 ; 2012.01.06	- find end of storage instead of reding it from eeprom (it never worked)
 ;		- removed hack, so eeprom is initialized only after major version change
 ;		- changing model survives reboot :-)
+;		- changed storage_find to not use mask, instead it looks for specific block id
 
 
 ;TODO
@@ -1387,22 +1388,26 @@ storage_skip_current_ee:
 ;
 ; find something in storage
 ; params:
-;	temp:  value
-;	temp2: mask
+;	temp:  block definition (model, block type)
+;	temp2: block id
+; destroys: W,r0
+; returns:
+;	Z - pointer to last block fulfilling criteria,
+;	Z=0 if not found
 
 storage_find:
 		clr	WL		;prepare result
 		clr	WH
-		push	temp
 		rcall	storage_get_start
 		rcall	storage_get_end
-		pop	temp
 storage_find_1:
-		lpm	r0,Z		;get id
-		mov	r1,temp
-		and	r0,temp2	;clear unimportant bits
-		and	r1,temp2
-		cp	r0,r1
+		lpm	r0,Z		;get model, block type etc
+		cp	r0,temp		;check block type
+		brne	storage_find_2
+		adiw	ZL,2		;get id
+		lpm	r0,Z
+		sbiw	ZL,2		;restore Z
+		cp	r0,temp2	;check id
 		brne	storage_find_2
 		;found
 		movw	WL,ZL		;save Z
@@ -1567,7 +1572,7 @@ model_load_5_2:
 ; trims container have model_id=0, block type and block_id=0
 trims_find:
 		ldi	temp,0		;look for block 0
-		ldi	temp2,0xff
+		ldi	temp2,0		;with id 0
 		rcall	storage_find
 		adiw	ZL,4		;trim data start = container_start+4
 		sts	trims,ZL
