@@ -97,6 +97,10 @@
 ;		- changing model survives reboot :-)
 ;		- changed storage_find to not use mask, instead it looks for specific block id
 ;		- changed storage_skip_current and removed storage_get_end
+; 2012.01.07	- menu_ram fixed and changed a little
+;		- model_select rewritten using menu_ram
+;		- add exception on processing block 0 in task_calc
+
 
 ;TODO
 ; - trims
@@ -442,9 +446,6 @@ reset:
 
 		ori	status,(1<<ADC_ON)+(1<<PPM_ON)	;enable adc and ppm (it also enables multitasking)
 
-		;init menu
-		;ldi	temp,1				;set initial menu positin
-		;sts	menu_item,temp
 		ori	statush,(1<<MENU_REDRAW)	;force redraw menu on first call
 
 
@@ -484,15 +485,83 @@ main_menu_1:
 		breq	main_menu	;do nothing
 		
 		cpi	temp,3		;debug
-		breq	menu_debug
+		breq	menu_debug_f
 		
+		cpi	temp,1
+		breq	menu_reverse
+		
+		cpi	temp,0
+		breq	menu_trims
+
 		cpi	temp,2		;model select
-		breq	model_select
+		breq	model_select_f
 		
 		rjmp	main_menu
 main_menu_def:	.db	"Main menu",0
 		.db	0,"Trims",0,1,"Reverse",0,2,"Model select",0,3,"Debug",0,0xff
 ;
+
+; # far jumps....
+model_select_f:	rjmp	model_select
+menu_debug_f:	rjmp	menu_debug
+;
+
+
+;
+; # trims
+menu_trims:
+		;init menu
+		ldi	ZL,low(menu_trims_txt<<1)
+		ldi	ZH,high(menu_trims_txt<<1)
+		rcall	menu_ram_init
+
+		;preare menu entries - find all trim channels connected to trim block for current model
+		ldi	XL,low(menu_ram)
+		ldi	XH,high(menu_ram)
+		
+		lds	ZL,sequence
+		lds	ZH,sequence+1
+		
+		rjmp	main_menu
+menu_trims_txt:	.db	"Trims",0
+;
+
+;
+; #
+menu_reverse:
+		ldi	ZL,low(menu_reverse_txt<<1)
+		ldi	ZH,high(menu_reverse_txt<<1)
+		rcall	menu_ram_init
+		
+		ldi	XL,low(menu_ram)
+		ldi	XH,high(menu_ram)
+		
+		ldi	temp,2
+		st	X+,temp
+		ldi	temp,3
+		st	X+,temp
+		ldi	temp,5
+		st	X+,temp
+		ldi	temp,6
+		st	X+,temp
+		ldi	temp,0xfe
+		st	X,temp
+		
+		rcall	menu_ram_setpos
+menu_reverse_1:
+		rcall	menu_ram_loop
+		sbrs	statush,MENU_CHANGED
+		rjmp	menu_reverse_1
+		
+		lds	temp,menu_pos
+		cpi	temp,0xff
+		brne	menu_reverse_2
+		rjmp	main_menu
+menu_reverse_2:
+		
+		rjmp	menu_reverse_1
+menu_reverse_txt: .db	"Reverse",0
+
 
 ;
 ; # menu debug
@@ -513,60 +582,63 @@ menu_debug_1:
 
 ;
 ; # select model
+.equ	MAX_MODELS_MENU=12
 model_select:
 		;draw menu
 		ldi	ZL,low(model_select_def<<1)
 		ldi	ZH,high(model_select_def<<1)
-		rcall	menu_init
+		rcall	menu_ram_init
 		
 		m_lcd_set_bg	COLOR_WHITE
+		m_lcd_set_fg	COLOR_BLACK
 
 		;draw model names
 		ldi	temp,1	;start at 1 model
+		sts	lcd_txt_y,zero	;also at 
+		ldi	XL,low(menu_ram)	;get pointer to menu definition
+		ldi	XH,high(menu_ram)
 model_select_2:
-		ldi	temp2,3		;set text position
-		sts	lcd_txt_x,temp2
-		sts	lcd_txt_y,temp
-		
-		;find name in storage
 		push	temp
-		
 		;model+(3<<6),14,0,"Basic 4CH",0,0
 		ori	temp,(3<<6)	;add bits for comment block
-		push	temp
-		rcall	storage_get_start
-		m_lcd_set_fg	COLOR_BLACK
+		ldi	temp2,0		;block id
+		rcall	storage_find	;find block in storage
 		pop	temp
-model_select_3:
-		lpm	temp2,Z		;get id
-		cp	temp2,temp	;found this id?
-		brne	model_select_4
-		;found
-		movw	WL,ZL		;for later
-		adiw	ZL,2
-		lpm	temp,Z+
-		tst	temp	;comment with id=0?
-		breq	model_select_5	;in Z we have pointer to text
-		movw	ZL,WL	;not found :-(
-model_select_4:
-		;not found
-		rcall	storage_skip_current	;skip current block, destroys temp3
-		brcc	model_select_3	;loop if not the end of storage
-		;end of storage
-		ldi	ZL,low(model_select_undef<<1)
-		ldi	ZH,high(model_select_undef<<1)
-		m_lcd_set_fg	COLOR_RED
-model_select_5:
-		rcall	lcd_text	;write model name
 		
+		mov	temp2,ZL	;found anything?
+		or	temp2,ZH
+		breq	model_select_3	;not
+
+		;found something
+		ldi	temp2,3		;set text position
+		sts	lcd_txt_x,temp2
+		
+		lds	temp2,lcd_txt_y
+		cpi	temp2,MAX_MODELS_MENU	;maximum number of models displayed?
+		breq	model_select_4
+		inc	temp2
+		sts	lcd_txt_y,temp2	;next row
+		
+		st	X+,temp		;save this model id in menu
+		
+		adiw	ZL,3		;start of text
+		push	temp
+		rcall	lcd_text	;display model name
 		pop	temp
-		inc	temp		;loop
-		cpi	temp,12
+model_select_3:		
+		inc	temp
+		cpi	temp,32		;max model id?
 		brne	model_select_2
+model_select_4:
+		ldi	temp,0xfe	;end of menu mark
+		st	X,temp
+		
+		lds	temp,cur_model	;set menu position to current model
+		sts	menu_pos,temp
 
-
+		;menu handling
 model_select_1:
-		rcall	menu_loop
+		rcall	menu_ram_loop
 		sbrs	statush,MENU_CHANGED
 		rjmp	model_select_1
 		
@@ -574,9 +646,6 @@ model_select_1:
 		lds	temp,menu_pos
 		cpi	temp,0xff	;ESC
 		breq	model_select_e
-		
-		cpi	temp,100	;next page
-		breq	model_select_1	;do nothing right now
 		
 		;set active model!
 		sts	cur_model,temp		;change active model
@@ -589,19 +658,6 @@ model_select_e:
 		
 
 model_select_def:	.db	"Select model ",0
-		.db	1," 1",0
-		.db	2," 2",0
-		.db	3," 3",0
-		.db	4," 4",0
-		.db	5," 5",0
-		.db	6," 6",0
-		.db	7," 7",0
-		.db	8," 8",0
-		.db	9," 9",0
-		.db	10,"10",0
-		.db	11,"11",0
-		.db	100,"---> more",0,0xff
-model_select_undef:	.db	"-- not defined --",0
 ;
 
 
@@ -1057,7 +1113,7 @@ menu_loop_3:
 		
 		ldi	temp,0xfe	;save end of menu mark
 		st	Y,temp
-;needs		
+
 menu_keys:
 		;check for keys pressed
 		lds	temp,keys	;check if any interesting key is pressed?
@@ -1150,12 +1206,18 @@ menu_ram_init:
 		pop	ZH
 		pop	ZL
 		rcall	top_bar_text	;print something in top bar
-		lds	temp,menu_ram	;get first id
-		sts	menu_pos,temp	;and store it as first selected
+
 		rcall	menu_body_clear	;clear body area
+
 		andi	statush,~(1<<MENU_CHANGED)	;clear 'dirty' flag
 		ori	statush,(1<<MENU_REDRAW)	;force first menu redraw
-
+		ret
+;
+menu_ram_setpos:
+		lds	temp,menu_ram	;get first id
+		sts	menu_pos,temp	;and store it as first selected
+		ret
+;
 menu_ram_loop:
 		;here is main loop
 		sbrs	statush,MENU_REDRAW	;skip drawing if not needed
@@ -1181,30 +1243,30 @@ menu_ram_loop_2:
 		m_lcd_set_fg	COLOR_WHITE
 menu_ram_loop_3:
 		;convert menu id into chars
-		push	temp4
 		push	temp2
 
-		mov	mtemp1,temp4	;convert it to ascii
+		mov	mtemp2,temp4	;convert it to ascii
 		rcall	math_todec_byte		
 
 		ldi	ZL,low(math_todec_out)	;print output
 		ldi	ZH,high(math_todec_out)
+
 		ldd	temp,Z+6
-		sts     lcd_arg1,temp2
+		sts     lcd_arg1,temp
 		rcall	lcd_char
+
 		ldd	temp,Z+7
-		sts     lcd_arg1,temp2
+		sts     lcd_arg1,temp
 		rcall	lcd_char
 		
 		pop	temp2
-		pop	temp4
 		
 		inc	temp2		;inc Y position
 		ld	temp,X		;get next id
 		cpi	temp,0xfe	;end of menu?
 		brne	menu_ram_loop_1
 		
-		ret
+		rjmp	menu_keys
 ;
 
 
@@ -1594,6 +1656,9 @@ task_calc_1:	;main processing loop (Z points to block number, temp contains numb
 		lpm	temp,Z+		;get block number for processing
 		push	ZL
 		push	ZH
+		
+		cpi	temp,0		;check if block number is 0 - it's compiler padding at end of block
+		breq	task_calc_99	;end if yes
 		
 		ldi	XL,low(blocks)	;calculate address of pointer stored in blocks table
 		ldi	XH,high(blocks)
