@@ -1,4 +1,4 @@
-; Include file generated from bootloader.lst dated Thu Dec 27 20:56:33 CET 2012
+; Include file generated from bootloader.lst dated Mon Jan  7 19:54:22 CET 2013
 .cseg
 .org	0x000f00
 boot_start:
