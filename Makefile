@@ -1,4 +1,4 @@
-# uncomment right device
+# uncomment right device and don't forget to do 'make clean' after that!
 DEVICE	?= M88
 #DEVICE	?= M168
 #DEVICE  ?= M328
