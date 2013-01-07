@@ -28,6 +28,7 @@
 ;		- math_todec
 ; 2013.01.01	- math_todec_byte (not quite 6.10 but reuses a large amount of code from math_todec)
 ; 2012.01.05	- small size optimization (saved 24B)
+; 2012.01.07	- another size oprimization in math_todec
 
 ;
 ; initialize math stack pointer
@@ -406,11 +407,12 @@ math_todec_3:	lsl	mtemp2		;shift5
 		rcall	math_pop	;get result
 		
 		;convert fraction to bcd
-		clr	mtemp3		;prepare result
-		clr	mtemp4
 		ldi	temp,16		;shifts count
 
 math_todec_entry:			;this back entry to loop, for example for
+		clr	mtemp3		;prepare result
+		clr	mtemp4
+
 		ldi	temp2,3		;prepare operand to add3
 		mov	temp3,temp2
 math_todec_4:
@@ -452,6 +454,7 @@ math_todec_7:
 		swap	temp3		;add3
 		add	mtemp4,temp3
 		swap	temp3
+
 		rjmp	math_todec_4
 math_todec_e:
 		;store resut
@@ -485,8 +488,6 @@ math_todec_e:
 ; destroyed: mtemp1..4,temp,temp2,r0,Y
 math_todec_byte:
 		;convert fraction to bcd
-		clr	mtemp3		;prepare result
-		clr	mtemp4
 		ldi	temp,8		;shifts count
 		rjmp	math_todec_entry
 
