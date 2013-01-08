@@ -17,7 +17,7 @@
 ; 2009.07.12	- small rewrite of adc interrupt (it triggers now ppm), adc is triggered every 20ms
 ;			from timer2 interrupt
 ;		- start ppm code
-; 2009.07.13	- finish ppm code, it works! :-)
+; 2009.07.13	- finished ppm code, it works! :-)
 ; 2009.07.14	- added basic model data with rules for blocks, channels and descriptions
 ;		- some cleanups
 ;		- added limits for generated ppm pulses (0.8...2.2ms)
@@ -100,10 +100,13 @@
 ; 2012.01.07	- menu_ram fixed and changed a little
 ;		- model_select rewritten using menu_ram
 ;		- add exception on processing block 0 in task_calc
+;		- some numbers replaced by constants
+;		- added subroutine to draw channel value and bar
+;		- almost finished trims (todo: save values to eeprom)
 
 
 ;TODO
-; - trims
+; - save/load trims to/from eeprom
 ; - reverses
 ; - expo ( x*(y*x*x+1-y) )
 
@@ -133,7 +136,7 @@
 .equ	ZEGAR_MAX=ZEGAR/64/1000
 .equ	LCD_PWM=150000
 .equ	DEFAULT_SPEED=ZEGAR/16/9600-1
-.equ	CHANNELS_MAX=256	;maximum number of channels, including internal
+.equ	CHANNELS_MAX=252	;maximum number of channels, including internal, limited to 252 because of menu routines
 .equ	BLOCKS_MAX=128		;253 is absolute max
 .equ	EE_SIG1=0xaa		;first byte of eeprom signature
 .equ	EE_SIG2=0x55		;second byte of eeprom signature
@@ -195,9 +198,19 @@
 .equ	MENU_CHANGED=5		;menu item selected/esc or enter key pressed
 .equ	FMS_OUT=6		;output FMS PIC compatible frames via rs
 .equ	STATUS_CHANGED=7	;if set, redraw all status line
+;block types
+.equ	BLOCK_TRIM=1
+.equ	BLOCK_REVERSE=2
+;menu constants
+.equ	MENU_ESC=0xff	;esc pressed
+.equ	MENU_END=0xfe	;end marker
+.equ	MENU_NEXT=0xfd	;->
+.equ	MENU_PREV=0xfc	;<-
+.equ	TRIM_STEP=16	;
 
 ; registers
 .def		zero=r2
+; r3
 .def		temp3=r4
 .def		temp4=r5
 .def		itemp3=r6
@@ -208,6 +221,8 @@
 .def		mtemp4=r11
 .def		mtemp5=r12
 .def		mtemp6=r13
+; r14
+; r15
 .def		temp=r16	;simple temp tegister
 .def		temp2=r17	;second temp
 .def		statush=r18
@@ -481,14 +496,14 @@ main_menu_1:
 		
 		;something pressed!
 		lds	temp,menu_pos
-		cpi	temp,0xff	;ESC
+		cpi	temp,MENU_ESC	;ESC
 		breq	main_menu	;do nothing
 		
 		cpi	temp,3		;debug
 		breq	menu_debug_f
 		
 		cpi	temp,1
-		breq	menu_reverse
+		breq	menu_reverse_f
 		
 		cpi	temp,0
 		breq	menu_trims
@@ -504,11 +519,13 @@ main_menu_def:	.db	"Main menu",0
 ; # far jumps....
 model_select_f:	rjmp	model_select
 menu_debug_f:	rjmp	menu_debug
+menu_reverse_f:	rjmp	menu_reverse
 ;
 
 
 ;
 ; # trims
+; TODO: max-trims-menu, pages
 menu_trims:
 		;init menu
 		ldi	ZL,low(menu_trims_txt<<1)
@@ -516,15 +533,249 @@ menu_trims:
 		rcall	menu_ram_init
 
 		;preare menu entries - find all trim channels connected to trim block for current model
-		ldi	XL,low(menu_ram)
-		ldi	XH,high(menu_ram)
+		ldi	YL,low(menu_ram)
+		ldi	YH,high(menu_ram)
 		
-		lds	ZL,sequence
+		lds	ZL,sequence	;get address of processing sequence
 		lds	ZH,sequence+1
 		
+		adiw	ZL,1		;get block length
+		lpm	temp3,Z+
+menu_trims_1:
+		lpm	temp,Z+		;get block number
+		movw	WL,ZL		;store Z for later
+		cpi	temp,0		;last block, zero padded?
+		breq	menu_trims_1e
+		
+		ldi	XL,low(blocks)	;pointer to block
+		ldi	XH,high(blocks)
+		add	XL,temp		;calculate address
+		adc	XH,zero
+		add	XL,temp
+		adc	XH,zero
+		ld	ZL,X+		;get block address
+		ld	ZH,X
+		adiw	ZL,4		;get block type @+4
+		lpm	temp,Z
+		cpi	temp,BLOCK_TRIM	;trim?
+		brne	menu_trims_1e
+		
+		;trim!
+		adiw	ZL,4		;second input channel @+8
+		lpm	temp,Z		;get channel id
+		st	Y+,temp		;store channel id
+		
+menu_trims_1e:
+		movw	ZL,WL		;restore Z
+		dec	temp3		;decrease blocks count
+		brne	menu_trims_1
+		
+		ldi	temp,MENU_END	;end of menu
+		st	Y,temp
+		
+		rcall	menu_ram_setpos
+		
+		;check for empty menu!
+		lds	temp,menu_ram
+		cpi	temp,MENU_END
+		brne	menu_trims_2
+		;empty menu
 		rjmp	main_menu
+menu_trims_2:
+		;draw all channels (values and bars)
+		ldi	XL,low(menu_ram)	;menu
+		ldi	XH,high(menu_ram)
+		ldi	temp,1
+		sts	lcd_txt_y,temp
+menu_trims_3:
+		ldi	temp,3			;set text coordinates
+		sts	lcd_txt_x,temp
+		ld	temp,X+		;get channel
+		cpi	temp,MENU_END
+		breq	menu_trims_4	;all drawed?
+		
+		rcall	channel_draw	;draw channel
+		
+		lds	temp,lcd_txt_y	;calculate next Y
+		inc	temp
+		sts	lcd_txt_y,temp
+		
+		rjmp	menu_trims_3
+
+menu_trims_4:
+		rcall	menu_ram_loop	;make menu loop
+		
+		lds	temp,keys	;check for left/right keys
+		andi	temp,(1<<KEY_LEFT)|(1<<KEY_RIGHT)
+		brne	menu_trims_5	;pressed?
+		
+		sbrs	statush,MENU_CHANGED	;something else pressed?
+		rjmp	menu_trims_4
+		
+		;something pressed
+		lds	temp,menu_pos
+		cpi	temp,MENU_ESC
+		brne	menu_trims_4
+		rjmp	main_menu
+menu_trims_5:
+		;left/right key pressed
+		lds	temp2,keys	;wait for key release
+		andi	temp2,(1<<KEY_LEFT)|(1<<KEY_RIGHT)
+		brne	menu_trims_5
+		
+		mov	temp3,temp	;for later
+		
+		lds	temp,menu_pos	;get menu position
+		rcall	calc_channel_addrY	;get channel value
+		ld	XL,Y+
+		ld	XH,Y
+		
+		sbrs	temp3,KEY_LEFT
+		rjmp	menu_trims_6
+		;left pressed
+		sbiw	XL,TRIM_STEP
+		rjmp	menu_trims_7
+menu_trims_6:
+		sbrs	temp3,KEY_RIGHT
+		rjmp	menu_trims_4
+		;right pressed
+		adiw	XL,TRIM_STEP
+menu_trims_7:
+		;store back channel value
+		sbiw	YL,1
+		st	Y+,XL
+		st	Y,XH
+		
+		;store to eeprom
+		;TODO
+		
+		;redraw only one channel
+		ldi	YL,low(menu_ram)
+		ldi	YH,high(menu_ram)
+		ldi	temp,1
+		lds	temp3,menu_pos
+menu_trims_8:
+		ld	temp2,Y+	;get menu item
+		cpi	temp2,MENU_END	;end?
+		breq	menu_trims_9
+		cp	temp2,temp3	;found?
+		breq	menu_trims_9
+		inc	temp		;next
+		rjmp	menu_trims_8
+menu_trims_9:
+		sts	lcd_txt_y,temp	;set text x/y
+		ldi	temp,3
+		sts	lcd_txt_x,temp
+		mov	temp,temp3	;channel number
+		rcall	channel_draw
+		
+		rjmp	menu_trims_4
 menu_trims_txt:	.db	"Trims",0
+;menu_trims_txt1: .db	"Not found!",0
 ;
+
+
+;
+; # in: temp - channel number, text cursor set at right position
+.equ	CH_BAR_LEN=81
+.equ	CH_BAR_OFFSET=6
+channel_draw:
+		push	temp
+		m_lcd_set_fg	COLOR_BLACK	;text color
+		m_lcd_set_bg	COLOR_WHITE
+		pop	temp
+		
+		push	temp
+		rcall	print_ch_dec	;print dec value of channel, Y=channel address+2
+		pop	temp
+		
+channel_draw_bar:
+		rcall	calc_channel_addrY
+		ld	mtemp1,Y+	;get channel value
+		ld	mtemp2,Y
+		rcall	math_push	;push on math stack
+		
+		ldi	temp,low(10*1024)	;push 10 on stack
+		mov	mtemp1,temp
+		ldi	temp,high(10*1024)
+		mov	mtemp2,temp
+		rcall	math_push
+		
+		rcall	math_mul	;multiply
+		rcall	math_pop	;get result
+		
+		ldi	temp,40		;scale up
+		add	temp,mtemp2
+		sbrc	temp,7	;sign
+		mov	temp,zero
+		cpi	temp,CH_BAR_LEN		;maximum
+		brcs	channel_draw_1
+		ldi	temp,CH_BAR_LEN
+channel_draw_1:
+		;temp - length of bar
+		mov	temp3,temp
+		
+		;first bar - full length
+		m_lcd_set_fg	COLOR_DKBLUE
+		lds	temp,lcd_txt_x	;calculate X axis
+		rcall	temp_mul8
+		subi	temp,-CH_BAR_OFFSET
+		sts	lcd_arg1,temp
+		
+		lds	temp,lcd_txt_y	;Y
+		rcall	temp_mul8
+		subi	temp,-1
+		sts	lcd_arg2,temp
+		
+		ldi	temp,CH_BAR_LEN	;dx
+		sts	lcd_arg3,temp
+		ldi	temp,6		;dy
+		sts	lcd_arg4,temp
+		
+		rcall	lcd_fill_rect	;draw bar
+		
+		;second bar - length proportional to channel value
+		lds	temp,lcd_arg1	;X
+		add	temp,temp3
+		sts	lcd_arg1,temp
+		
+		ldi	temp,CH_BAR_LEN+1
+		sub	temp,temp3
+		sts	lcd_arg3,temp	;dx (y remains the same)
+		
+		ldi	temp,4		;dy
+		sts	lcd_arg4,temp
+		
+		m_lcd_set_fg	COLOR_WHITE
+		rcall	lcd_fill_rect
+		
+		;center mark
+		lds	temp,lcd_txt_x	;x
+		rcall	temp_mul8
+		subi	temp,-(40+CH_BAR_OFFSET)
+		sts	lcd_arg1,temp
+		
+		ldi	temp,1		;dx
+		sts	lcd_arg3,temp
+		ldi	temp,6		;dy
+		sts	lcd_arg4,temp
+		
+		m_lcd_set_fg	COLOR_MAGENTA
+		rcall	lcd_fill_rect
+		
+		ret
+;
+
+
+;
+; # multiply temp x8
+temp_mul8:
+		lsl	temp
+		lsl	temp
+		lsl	temp
+		ret
+;
+
 
 ;
 ; #
@@ -544,7 +795,7 @@ menu_reverse:
 		st	X+,temp
 		ldi	temp,6
 		st	X+,temp
-		ldi	temp,0xfe
+		ldi	temp,MENU_END
 		st	X,temp
 		
 		rcall	menu_ram_setpos
@@ -554,7 +805,7 @@ menu_reverse_1:
 		rjmp	menu_reverse_1
 		
 		lds	temp,menu_pos
-		cpi	temp,0xff
+		cpi	temp,MENU_ESC
 		brne	menu_reverse_2
 		rjmp	main_menu
 menu_reverse_2:
@@ -630,7 +881,7 @@ model_select_3:
 		cpi	temp,32		;max model id?
 		brne	model_select_2
 model_select_4:
-		ldi	temp,0xfe	;end of menu mark
+		ldi	temp,MENU_END	;end of menu mark
 		st	X,temp
 		
 		lds	temp,cur_model	;set menu position to current model
@@ -644,7 +895,7 @@ model_select_1:
 		
 		;something pressed
 		lds	temp,menu_pos
-		cpi	temp,0xff	;ESC
+		cpi	temp,MENU_ESC	;ESC
 		breq	model_select_e
 		
 		;set active model!
@@ -1111,7 +1362,7 @@ menu_loop_3:
 		cpi	temp,0xff	;end of menu?
 		brne	menu_loop_1
 		
-		ldi	temp,0xfe	;save end of menu mark
+		ldi	temp,MENU_END	;save end of menu mark
 		st	Y,temp
 
 menu_keys:
@@ -1152,7 +1403,7 @@ menu_keys_up:
 		mov	temp4,temp3	;init last pos
 menu_keys_up_1:
 		ld	temp,Y+		;get id
-		cpi	temp,0xfe	;check if it's the end
+		cpi	temp,MENU_END	;check if it's the end
 		breq	menu_keys_up_e
 		cp	temp,temp3	;check for current id
 		breq	menu_keys_up_e
@@ -1173,14 +1424,14 @@ menu_keys_down:
 menu_keys_down_1:
 		;find current position
 		ld	temp,Y+
-		cpi	temp,0xfe	;end of definition?
+		cpi	temp,MENU_END	;end of definition?
 		breq	menu_keys_down_e
 		cp	temp,temp3	;found?
 		breq	menu_keys_down_3
 		rjmp	menu_keys_down_1
 menu_keys_down_3:
 		ld	temp,Y		;get next id of end of menu
-		cpi	temp,0xfe
+		cpi	temp,MENU_END
 		breq	menu_keys_down_e
 		mov	temp4,temp
 menu_keys_down_e:
@@ -1189,7 +1440,7 @@ menu_keys_down_e:
 		ret		
 
 menu_keys_esc:
-		ldi	temp,0xff	;esc code
+		ldi	temp,MENU_ESC	;esc code
 		sts	menu_pos,temp
 menu_keys_enter:
 		ori	statush,(1<<MENU_CHANGED)	;set flag that something happen in menu
@@ -1263,7 +1514,7 @@ menu_ram_loop_3:
 		
 		inc	temp2		;inc Y position
 		ld	temp,X		;get next id
-		cpi	temp,0xfe	;end of menu?
+		cpi	temp,MENU_END	;end of menu?
 		brne	menu_ram_loop_1
 		
 		rjmp	menu_keys
@@ -1677,11 +1928,11 @@ task_calc_1:	;main processing loop (Z points to block number, temp contains numb
 		adiw	ZL,4		;get block type
 		lpm	temp,Z
 		
-		cpi	temp,1		;trim
+		cpi	temp,BLOCK_TRIM	;trim (1)
 		breq	task_calc_add
 		cpi	temp,12		;add
 		breq	task_calc_add
-		cpi	temp,2		;reverse
+		cpi	temp,BLOCK_REVERSE	;reverse (2)
 		breq	task_calc_mul
 		cpi	temp,4		;multiply
 		breq	task_calc_mul
@@ -2843,11 +3094,11 @@ storage_end:	.byte	2		;pointer to end of flash storage
 .eseg
 .org	0
 eesig:		.db	EE_SIG1,EE_SIG2	;signature
-		.db	EE_VERSION		;eeprom variables version
+		.db	EE_VERSION	;eeprom variables version
 ee_last_model:	.db	1
 ee_status:	.db	0
 ee_statush:	.db	0
-
+ee_channels:				;trims storage
 ; #
 ; ################################################################
 ; ##############      E      N      D        #####################
