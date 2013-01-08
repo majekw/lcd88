@@ -29,6 +29,7 @@
 ; 2013.01.01	- math_todec_byte (not quite 6.10 but reuses a large amount of code from math_todec)
 ; 2012.01.05	- small size optimization (saved 24B)
 ; 2012.01.07	- another size oprimization in math_todec
+;		- use mtemp5 instead of global temp3 in math_todec
 
 ;
 ; initialize math stack pointer
@@ -336,6 +337,8 @@ math_drop:
 ; in fact, 4 digits of fraction should be enough, so total 8 bytes needed
 ; anyway, using 16 bit to compute it limits number of bcd digits to 4
 ; in: mtemp1, mtemp2
+; out: chars @math_todec_out
+; destroyed: temp,temp2,mtemp1..5
 .equ	math_todec_out=ram_temp		;use general purpose ram buffer for output
 math_todec:
 		;get sign
@@ -414,7 +417,7 @@ math_todec_entry:			;this back entry to loop, for example for
 		clr	mtemp4
 
 		ldi	temp2,3		;prepare operand to add3
-		mov	temp3,temp2
+		mov	mtemp5,temp2
 math_todec_4:
 		lsl	mtemp1		;shift
 		rol	mtemp2
@@ -427,7 +430,7 @@ math_todec_4:
 		andi	temp2,0x0f
 		cpi	temp2,5
 		brcs	math_todec_5
-		add	mtemp3,temp3	;add3
+		add	mtemp3,mtemp5	;add3
 		adc	mtemp4,zero
 math_todec_5:
 		mov	temp2,mtemp3	;second nibble
@@ -435,25 +438,25 @@ math_todec_5:
 		andi	temp2,0x0f
 		cpi	temp2,5
 		brcs	math_todec_6
-		swap	temp3		;add3
-		add	mtemp3,temp3
+		swap	mtemp5		;add3
+		add	mtemp3,mtemp5
 		adc	mtemp4,zero
-		swap	temp3
+		swap	mtemp5
 math_todec_6:
 		mov	temp2,mtemp4	;third nibble
 		andi	temp2,0x0f
 		cpi	temp2,5
 		brcs	math_todec_7
-		add	mtemp4,temp3	;add3
+		add	mtemp4,mtemp5	;add3
 math_todec_7:
 		mov	temp2,mtemp4	;last nibble
 		swap	temp2
 		andi	temp2,0x0f
 		cpi	temp2,5
 		brcs	math_todec_4
-		swap	temp3		;add3
-		add	mtemp4,temp3
-		swap	temp3
+		swap	mtemp5		;add3
+		add	mtemp4,mtemp5
+		swap	mtemp5
 
 		rjmp	math_todec_4
 math_todec_e:
@@ -485,7 +488,7 @@ math_todec_e:
 ; # convert only one byte to 2 digits
 ; in: mtemp2
 ; out: ascii at math_todec_out+5..7
-; destroyed: mtemp1..4,temp,temp2,r0,Y
+; destroyed: mtemp1..5,temp,temp2
 math_todec_byte:
 		;convert fraction to bcd
 		ldi	temp,8		;shifts count
