@@ -103,6 +103,8 @@
 ;		- some numbers replaced by constants
 ;		- added subroutine to draw channel value and bar
 ;		- almost finished trims (todo: save values to eeprom)
+; 2012.01.09	- added eeprom_read, rewritten code using it (saved 28B)
+;		- moved some code to better place:-)
 
 
 ;TODO
@@ -676,108 +678,6 @@ menu_trims_txt:	.db	"Trims",0
 
 
 ;
-; # in: temp - channel number, text cursor set at right position
-.equ	CH_BAR_LEN=81
-.equ	CH_BAR_OFFSET=6
-channel_draw:
-		push	temp
-		m_lcd_set_fg	COLOR_BLACK	;text color
-		m_lcd_set_bg	COLOR_WHITE
-		pop	temp
-		
-		push	temp
-		rcall	print_ch_dec	;print dec value of channel, Y=channel address+2
-		pop	temp
-		
-channel_draw_bar:
-		rcall	calc_channel_addrY
-		ld	mtemp1,Y+	;get channel value
-		ld	mtemp2,Y
-		rcall	math_push	;push on math stack
-		
-		ldi	temp,low(10*1024)	;push 10 on stack
-		mov	mtemp1,temp
-		ldi	temp,high(10*1024)
-		mov	mtemp2,temp
-		rcall	math_push
-		
-		rcall	math_mul	;multiply
-		rcall	math_pop	;get result
-		
-		ldi	temp,40		;scale up
-		add	temp,mtemp2
-		sbrc	temp,7	;sign
-		mov	temp,zero
-		cpi	temp,CH_BAR_LEN		;maximum
-		brcs	channel_draw_1
-		ldi	temp,CH_BAR_LEN
-channel_draw_1:
-		;temp - length of bar
-		mov	temp3,temp
-		
-		;first bar - full length
-		m_lcd_set_fg	COLOR_DKBLUE
-		lds	temp,lcd_txt_x	;calculate X axis
-		rcall	temp_mul8
-		subi	temp,-CH_BAR_OFFSET
-		sts	lcd_arg1,temp
-		
-		lds	temp,lcd_txt_y	;Y
-		rcall	temp_mul8
-		subi	temp,-1
-		sts	lcd_arg2,temp
-		
-		ldi	temp,CH_BAR_LEN	;dx
-		sts	lcd_arg3,temp
-		ldi	temp,6		;dy
-		sts	lcd_arg4,temp
-		
-		rcall	lcd_fill_rect	;draw bar
-		
-		;second bar - length proportional to channel value
-		lds	temp,lcd_arg1	;X
-		add	temp,temp3
-		sts	lcd_arg1,temp
-		
-		ldi	temp,CH_BAR_LEN+1
-		sub	temp,temp3
-		sts	lcd_arg3,temp	;dx (y remains the same)
-		
-		ldi	temp,4		;dy
-		sts	lcd_arg4,temp
-		
-		m_lcd_set_fg	COLOR_WHITE
-		rcall	lcd_fill_rect
-		
-		;center mark
-		lds	temp,lcd_txt_x	;x
-		rcall	temp_mul8
-		subi	temp,-(40+CH_BAR_OFFSET)
-		sts	lcd_arg1,temp
-		
-		ldi	temp,1		;dx
-		sts	lcd_arg3,temp
-		ldi	temp,6		;dy
-		sts	lcd_arg4,temp
-		
-		m_lcd_set_fg	COLOR_MAGENTA
-		rcall	lcd_fill_rect
-		
-		ret
-;
-
-
-;
-; # multiply temp x8
-temp_mul8:
-		lsl	temp
-		lsl	temp
-		lsl	temp
-		ret
-;
-
-
-;
 ; #
 menu_reverse:
 		ldi	ZL,low(menu_reverse_txt<<1)
@@ -1068,29 +968,7 @@ show_out_bars_5:
 lcd_initialize:
 		waitms	250
 		rcall	lcd_init
-
-		;draw some garbage on lcd
-;		m_lcd_set_bg	COLOR_YELLOW
-;		m_lcd_set_fg	COLOR_RED
-;		m_lcd_fill_rect	10,10,20,20
-		
-;		m_lcd_set_fg	COLOR_BLUE
-;		m_lcd_fill_rect	64,64,50,50
-
-;		m_lcd_set_fg	COLOR_BLACK
-;		m_lcd_fill_rect	0,0,176,10
-		
-;		m_lcd_set_bg	COLOR_BLACK
-;		m_lcd_set_fg	COLOR_CYAN
-
-		;m_lcd_text_pos	0,0
-		;m_lcd_text	banner
-;
-		
-		;m_lcd_set_bg	COLOR_WHITE	;set default colors
-		;m_lcd_set_fg	COLOR_BLACK
 		ret
-;banner:		.db	"(C) 2007-2012 Marek Wodzinski",0
 ;
 
 
@@ -1175,6 +1053,108 @@ show_io_values_3:
 		ret
 show_io_txt1:	.db	"Input/output values",0
 show_io_txt2:	.db	"C IN   OUT  IN(dec)",0
+;
+
+
+;
+; # in: temp - channel number, text cursor set at right position
+.equ	CH_BAR_LEN=81
+.equ	CH_BAR_OFFSET=6
+channel_draw:
+		push	temp
+		m_lcd_set_fg	COLOR_BLACK	;text color
+		m_lcd_set_bg	COLOR_WHITE
+		pop	temp
+		
+		push	temp
+		rcall	print_ch_dec	;print dec value of channel, Y=channel address+2
+		pop	temp
+		
+channel_draw_bar:
+		rcall	calc_channel_addrY
+		ld	mtemp1,Y+	;get channel value
+		ld	mtemp2,Y
+		rcall	math_push	;push on math stack
+		
+		ldi	temp,low(10*1024)	;push 10 on stack
+		mov	mtemp1,temp
+		ldi	temp,high(10*1024)
+		mov	mtemp2,temp
+		rcall	math_push
+		
+		rcall	math_mul	;multiply
+		rcall	math_pop	;get result
+		
+		ldi	temp,40		;scale up
+		add	temp,mtemp2
+		sbrc	temp,7	;sign
+		mov	temp,zero
+		cpi	temp,CH_BAR_LEN		;maximum
+		brcs	channel_draw_1
+		ldi	temp,CH_BAR_LEN
+channel_draw_1:
+		;temp - length of bar
+		mov	temp3,temp
+		
+		;first bar - full length
+		m_lcd_set_fg	COLOR_DKBLUE
+		lds	temp,lcd_txt_x	;calculate X axis
+		rcall	temp_mul8
+		subi	temp,-CH_BAR_OFFSET
+		sts	lcd_arg1,temp
+		
+		lds	temp,lcd_txt_y	;Y
+		rcall	temp_mul8
+		subi	temp,-1
+		sts	lcd_arg2,temp
+		
+		ldi	temp,CH_BAR_LEN	;dx
+		sts	lcd_arg3,temp
+		ldi	temp,6		;dy
+		sts	lcd_arg4,temp
+		
+		rcall	lcd_fill_rect	;draw bar
+		
+		;second bar - length proportional to channel value
+		lds	temp,lcd_arg1	;X
+		add	temp,temp3
+		sts	lcd_arg1,temp
+		
+		ldi	temp,CH_BAR_LEN+1
+		sub	temp,temp3
+		sts	lcd_arg3,temp	;dx (y remains the same)
+		
+		ldi	temp,4		;dy
+		sts	lcd_arg4,temp
+		
+		m_lcd_set_fg	COLOR_WHITE
+		rcall	lcd_fill_rect
+		
+		;center mark
+		lds	temp,lcd_txt_x	;x
+		rcall	temp_mul8
+		subi	temp,-(40+CH_BAR_OFFSET)
+		sts	lcd_arg1,temp
+		
+		ldi	temp,1		;dx
+		sts	lcd_arg3,temp
+		ldi	temp,6		;dy
+		sts	lcd_arg4,temp
+		
+		m_lcd_set_fg	COLOR_MAGENTA
+		rcall	lcd_fill_rect
+		
+		ret
+;
+
+
+;
+; # multiply temp x8
+temp_mul8:
+		lsl	temp
+		lsl	temp
+		lsl	temp
+		ret
 ;
 
 
@@ -1528,38 +1508,38 @@ menu_ram_loop_3:
 ; check eeprom, if empty: initialize; if valid: load data from eeprom
 eeprom_init:
 		;check for correct eeprom signature and version
-		out	EEARH,zero	;first byte
-		out	EEARL,zero
-		sbi	EECR,EERE
-		in	temp,EEDR
+		ldi	XL,low(ee_sig)		;first byte
+		ldi	XH,high(ee_sig)
+		rcall	eeprom_read
 		cpi	temp,EE_SIG1
 		brne	eeprom_init_1
 		
-		ldi	temp,1		;second byte
-		out	EEARL,temp
-		sbi	EECR,EERE
-		in	temp,EEDR
+		adiw	XL,1		;second byte
+		rcall	eeprom_read
 		cpi	temp,EE_SIG2
 		brne	eeprom_init_1
 		
-		ldi	temp,2		;version
-		out	EEARL,temp
-		sbi	EECR,EERE
-		in	temp,EEDR
+		adiw	XL,1		;version
+		rcall	eeprom_read
 		cpi	temp,EE_VERSION
 		brne	eeprom_init_1
-		;rjmp	eeprom_init_1	;HACK
 		
 		;read some values from eeprom
-		m_eeprom_read	ee_last_model		;restore last used model
+		ldi	XL,low(ee_last_model)		;last used model
+		;ldi	XH,high(ee_last_model)
+		rcall	eeprom_read
 		sts	cur_model,temp
 
 		;default values for status register
-		m_eeprom_read	ee_status
+		ldi	XL,low(ee_status)
+		;ldi	XH,high(ee_status)
+		rcall	eeprom_read
 		andi	temp,(1<<ADC_FILTER)|(1<<ADC_FILTER4)|(1<<PPM_POL)	;mask only runtime bits bits
 		mov	status,temp
 
-		m_eeprom_read	ee_statush
+		ldi	XL,low(ee_statush)
+		;ldi	XH,high(ee_statush)
+		rcall	eeprom_read
 		andi	temp,(1<<EXTENDER)|(1<<FMS_OUT)	;mask only runtime bits bits
 		mov	status,temp
 		
@@ -1622,6 +1602,20 @@ eeprom_write_1:
 		ret
 
 ;
+
+
+;
+; # read byte from eeprom
+; in: X - address
+; out: temp - result
+eeprom_read:
+		out	EEARH,XH
+		out	EEARL,XL
+		sbi	EECR,EERE
+		in	temp,EEDR
+		ret
+;
+
 
 ;
 ; ########### storage management routines #############
@@ -3061,6 +3055,7 @@ ch_trims:	.dw	544		;center position for channel 0
     .org	SECONDBOOTSTART
 .endif
 flash_end:
+
 .include "bootloader.inc"	;needed for flash reprogramming
 
 
@@ -3093,12 +3088,14 @@ storage_end:	.byte	2		;pointer to end of flash storage
 ; #
 .eseg
 .org	0
-eesig:		.db	EE_SIG1,EE_SIG2	;signature
+ee_sig:		.db	EE_SIG1,EE_SIG2	;signature
 		.db	EE_VERSION	;eeprom variables version
 ee_last_model:	.db	1
 ee_status:	.db	0
 ee_statush:	.db	0
-ee_channels:				;trims storage
+ee_trims:				;trims storage
+.org	EEPROMEND
+ee_trims_end:
 ; #
 ; ################################################################
 ; ##############      E      N      D        #####################
