@@ -105,16 +105,17 @@
 ;		- almost finished trims (todo: save values to eeprom)
 ; 2012.01.09	- added eeprom_read, rewritten code using it (saved 28B)
 ;		- moved some code to better place:-)
-
+;		- bug fix in menu_trims (generation list of channels)
+;		- functions to manage trims in eeprom
+;		- storing trims in eeprom now works! :-)
 
 ;TODO
-; - save/load trims to/from eeprom
 ; - reverses
 ; - expo ( x*(y*x*x+1-y) )
 
 .nolist
-;standard header for atmega88 or mega168
 
+;standard include headers
 .ifdef M88
     .include "m88def.inc"
 .else
@@ -142,7 +143,7 @@
 .equ	BLOCKS_MAX=128		;253 is absolute max
 .equ	EE_SIG1=0xaa		;first byte of eeprom signature
 .equ	EE_SIG2=0x55		;second byte of eeprom signature
-.equ	EE_VERSION=2		;must be changed if eeprom format will change
+.equ	EE_VERSION=4		;must be changed if eeprom format will change
 .equ	TRIM_BYTES=10		;how much bytes are used to trim each a/c channel to produce -1..1 result
 .equ	PPM_INTERVAL=20		;20ms for each frame
 .equ	PPM_SYNC=ZEGAR*3/10000	;0.3ms
@@ -386,12 +387,6 @@ reset:
 		ldi	YH,high(SRAM_SIZE-2)
 		rcall	clear_ram
 		
-		;initialize end of flash data position
-		rcall	storage_find_end
-
-		;get some data from eeprom (initialize also status register)
-		rcall	eeprom_init
-
 		;initialize timers
 		;Timer0 - pwm for LCD backlight, 150kHz, 75% duty, output via OC0B, no prescaling
 		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
@@ -447,6 +442,12 @@ reset:
 
 		;initialize math stack pointer
 		rcall	math_init
+
+		;initialize end of flash data position
+		rcall	storage_find_end
+
+		;get some data from eeprom (initialize also status register)
+		rcall	eeprom_init	; it could enable interrupts!
 
 		;enable interrupts
 		sei
@@ -543,6 +544,8 @@ menu_trims:
 		
 		adiw	ZL,1		;get block length
 		lpm	temp3,Z+
+		dec	temp3		;- header
+		dec	temp3
 menu_trims_1:
 		lpm	temp,Z+		;get block number
 		movw	WL,ZL		;store Z for later
@@ -571,7 +574,7 @@ menu_trims_1e:
 		movw	ZL,WL		;restore Z
 		dec	temp3		;decrease blocks count
 		brne	menu_trims_1
-		
+
 		ldi	temp,MENU_END	;end of menu
 		st	Y,temp
 		
@@ -649,7 +652,8 @@ menu_trims_7:
 		st	Y,XH
 		
 		;store to eeprom
-		;TODO
+		lds	temp2,menu_pos
+		rcall	ee_trim_write
 		
 		;redraw only one channel
 		ldi	YL,low(menu_ram)
@@ -1575,6 +1579,19 @@ eeprom_init_1:
 		ldi	temp,0
 		m_eeprom_write	ee_statush
 
+		;clear trims
+		ldi	XL,low(ee_trims)
+		ldi	XH,high(ee_trims)
+		ldi	temp,0xff
+		ldi	temp2,high(ee_trims_end)	;check for end of eeprom storage
+eeprom_init_2:
+		rcall	eeprom_write
+		adiw	XL,1	;next cell
+		
+		cpi	XL,low(ee_trims_end)
+		cpc	XH,temp2
+		brcs	eeprom_init_2
+		
 		ret
 ;
 
@@ -1622,6 +1639,104 @@ eeprom_read:
 ;
 
 
+; ####### eeprom storage ##########
+;
+; # find channel in eeprom
+; in: temp - model, temp2 - channel number
+; out: X - address of channel in eeprom, carry set if found
+; destroys: temp3, temp
+ee_trim_find:
+		ldi	XL,low(ee_trims)
+		ldi	XH,high(ee_trims)
+		mov	temp3,temp
+ee_trim_find_1:
+		rcall	eeprom_read	;get byte
+		cp	temp,temp3	;model?
+		brne	ee_trim_find_2
+		adiw	XL,1		;channel?
+		rcall	eeprom_read
+		sbiw	XL,1	;get back
+		cp	temp,temp2
+		brne	ee_trim_find_2
+		;found!
+		sec
+		ret
+ee_trim_find_2:
+		;loop
+		adiw	XL,4	;next cell
+		
+		ldi	temp,high(ee_trims_end)	;check for end of eeprom storage
+		cpi	XL,low(ee_trims_end)
+		cpc	XH,temp
+		brcs	ee_trim_find_1
+		ret
+;
+
+
+;
+; # write channel to eeprom
+; in: temp2 - channel
+; destroys: X, Y, temp, temp3
+ee_trim_write:
+		mov	temp,temp2
+		rcall	calc_channel_addrY	;get channel address
+
+		lds	temp,cur_model
+		rcall	ee_trim_find		;get eeprom address
+		brcc	ee_trim_write_1
+		;found old value
+		adiw	XL,2		;skip model and channel
+ee_trim_write_0:
+		ld	temp,Y+
+		rcall	eeprom_write
+		adiw	XL,1
+		ld	temp,Y+
+		rcall	eeprom_write
+ee_trim_write_2:
+		ret
+ee_trim_write_1:
+		;not found in eeprom - we need find first empty cell
+		push	temp2
+		ldi	temp,0xff	;empty cell id
+		ldi	temp2,0xff
+		rcall	ee_trim_find
+		pop	temp2
+		brcc	ee_trim_write_2	;end of storage - do nothing
+		;found empty place
+		lds	temp,cur_model	;first byte: model id
+		rcall	eeprom_write
+		adiw	XL,1
+		mov	temp,temp2	;second byte: channel id
+		rcall	eeprom_write
+		adiw	XL,1
+		rjmp	ee_trim_write_0	;write channel value
+;
+
+
+;
+; # get trim value from eeprom
+; in: temp2 - channel
+; destroys: temp, temp3, X, Y 
+ee_trim_read:
+		mov	temp,temp2
+		rcall	calc_channel_addrY	;get channel address
+		lds	temp,cur_model
+		rcall	ee_trim_find		;get eeprom address
+		brcs	ee_trim_read_1
+		ret	;not found
+ee_trim_read_1:
+		;found
+		adiw	XL,2
+		rcall	eeprom_read
+		st	Y+,temp
+		adiw	XL,1
+		rcall	eeprom_read
+		st	Y+,temp
+		ret
+;
+
+
+; ######### Flash storage #############
 ;
 ; get beginning of storage
 storage_get_start:
@@ -1807,7 +1922,7 @@ model_load_2_1:
 
 model_load_3:
 		cpi	temp,0			;block?
-		brne	model_load_4
+		brne	model_load_4		;channel
 		;block
 		ldi	YL,low(blocks)		;calculate address in buffer for that block
 		ldi	YH,high(blocks)
@@ -1834,6 +1949,7 @@ model_load_4:
 		;channel
 		adiw	ZL,2
 		lpm	temp,Z			;get channel_id
+		mov	temp2,temp		;for eeprom
 
 		rcall	calc_channel_addrY		;calculate channel address
 
@@ -1842,6 +1958,9 @@ model_load_4:
 		st	Y,temp
 		lpm	temp,Z
 		std	Y+1,temp
+		
+		rcall	ee_trim_read		;get channel trim from eeprom if found
+		
 		rjmp	model_load_e
 
 model_load_5:	;model name
