@@ -173,8 +173,8 @@
 		.db	model+(2<<6),6,31,0,0,0		;ch3 trim
 		.db	model+(2<<6),6,40,0,0,4		;ch0 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,41,0,0,4		;ch1 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,32,0,0,4		;ch0 x0.5
-		.db	model+(2<<6),6,33,0,0,4		;ch1 x0.5
+		.db	model+(2<<6),6,32,0,0,2		;ch0 x0.5
+		.db	model+(2<<6),6,33,0,0,2		;ch1 x0.5
 		.db	model+(2<<6),6,42,0,0,4		;ch2 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,43,0,0,4		;ch3 reverse (default 1 = no reverse)
 		;blocks
@@ -216,10 +216,10 @@
 		.db	model+(2<<6),6,41,14,low(L_ONE),high(L_ONE)	;ch1 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,42,15,low(L_ONE),high(L_ONE)	;ch2 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,43,16,low(L_ONE),high(L_ONE)	;ch3 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,52,0,0,0	;ch0 connection between trim and inverse
-		.db	model+(2<<6),6,53,0,0,0	;ch1 connection between trim and inverse
-		.db	model+(2<<6),6,54,0,0,0	;ch2 connection between trim and inverse
-		.db	model+(2<<6),6,55,0,0,0	;ch3 connection between trim and inverse
+		;.db	model+(2<<6),6,52,0,0,0	;ch0 connection between trim and inverse
+		;.db	model+(2<<6),6,53,0,0,0	;ch1 connection between trim and inverse
+		;.db	model+(2<<6),6,54,0,0,0	;ch2 connection between trim and inverse
+		;.db	model+(2<<6),6,55,0,0,0	;ch3 connection between trim and inverse
 
 		;blocks
 		.db	model+(0<<6),10,1,21,1,2,1,0,28,52	;trim for ch0
@@ -293,12 +293,12 @@
 		.db	model+(2<<6),6,42,0,low(L_ONE),high(L_ONE)	;ch2 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,43,0,low(L_ONE),high(L_ONE)	;ch3 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,44,0,low(L_ONE),high(L_ONE)	;ch4 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,52,0,0,0	;ch0 connection between trim and inverse
-		.db	model+(2<<6),6,53,0,0,0	;ch1 connection between trim and inverse
-		.db	model+(2<<6),6,54,0,0,0	;ch2 connection between trim and inverse
-		.db	model+(2<<6),6,55,0,0,0	;ch3 connection between trim and inverse
-		.db	model+(2<<6),6,56,0,0,0	;ch4 connection between trim and inverse
-		.db	model+(2<<6),6,57,0,0,0	;ch7 - neg
+		;.db	model+(2<<6),6,52,0,0,0	;ch0 connection between trim and inverse
+		;.db	model+(2<<6),6,53,0,0,0	;ch1 connection between trim and inverse
+		;.db	model+(2<<6),6,54,0,0,0	;ch2 connection between trim and inverse
+		;.db	model+(2<<6),6,55,0,0,0	;ch3 connection between trim and inverse
+		;.db	model+(2<<6),6,56,0,0,0	;ch4 connection between trim and inverse
+		;.db	model+(2<<6),6,57,0,0,0	;ch7 - neg
 
 		;blocks
 		.db	model+(0<<6),10,1,0,1,2,1,0,28,52	;trim for ch0
