@@ -108,10 +108,12 @@
 ;		- bug fix in menu_trims (generation list of channels)
 ;		- functions to manage trims in eeprom
 ;		- storing trims in eeprom now works! :-)
+;		- changing reverses
+
 
 ;TODO
-; - reverses
 ; - expo ( x*(y*x*x+1-y) )
+; - show channel details on separate screen
 
 .nolist
 
@@ -224,8 +226,8 @@
 .def		mtemp4=r11
 .def		mtemp5=r12
 .def		mtemp6=r13
-; r14
-; r15
+.def		temp5=r14
+.def		temp6=r15
 .def		temp=r16	;simple temp tegister
 .def		temp2=r17	;second temp
 .def		statush=r18
@@ -530,9 +532,13 @@ menu_reverse_f:	rjmp	menu_reverse
 ; # trims
 ; TODO: max-trims-menu, pages
 menu_trims:
-		;init menu
+		ldi	temp,BLOCK_TRIM		;search for trims
+		mov	temp5,temp
 		ldi	ZL,low(menu_trims_txt<<1)
 		ldi	ZH,high(menu_trims_txt<<1)
+		
+menu_trim_rev:
+		;init menu
 		rcall	menu_ram_init
 
 		;preare menu entries - find all trim channels connected to trim block for current model
@@ -562,10 +568,10 @@ menu_trims_1:
 		ld	ZH,X
 		adiw	ZL,4		;get block type @+4
 		lpm	temp,Z
-		cpi	temp,BLOCK_TRIM	;trim?
+		cp	temp,temp5	;trim/reverse?
 		brne	menu_trims_1e
 		
-		;trim!
+		;trim/reverse
 		adiw	ZL,4		;second input channel @+8
 		lpm	temp,Z		;get channel id
 		st	Y+,temp		;store channel id
@@ -638,13 +644,32 @@ menu_trims_5:
 		sbrs	temp3,KEY_LEFT
 		rjmp	menu_trims_6
 		;left pressed
+		mov	temp,temp5
+		cpi	temp,BLOCK_TRIM	;trim or reverse?
+		brne	menu_trims_5a
+		;left - trim
 		sbiw	XL,TRIM_STEP
 		rjmp	menu_trims_7
+menu_trims_5a:
+		;left - reverse
+		ldi	XL,low(L_MONE)
+		ldi	XH,high(L_MONE)
+		rjmp	menu_trims_7
 menu_trims_6:
+		;not left pressed
 		sbrs	temp3,KEY_RIGHT
 		rjmp	menu_trims_4
 		;right pressed
+		mov	temp,temp5
+		cpi	temp,BLOCK_TRIM
+		brne	menu_trims_6a
+		;right - trim
 		adiw	XL,TRIM_STEP
+		rjmp	menu_trims_7
+menu_trims_6a:
+		;right - reverse
+		ldi	XL,low(L_ONE)
+		ldi	XH,high(L_ONE)
 menu_trims_7:
 		;store back channel value
 		sbiw	YL,1
@@ -684,38 +709,14 @@ menu_trims_txt:	.db	"Trims",0
 ;
 ; #
 menu_reverse:
+		ldi	temp,BLOCK_REVERSE		;search for reverses
+		mov	temp5,temp
 		ldi	ZL,low(menu_reverse_txt<<1)
 		ldi	ZH,high(menu_reverse_txt<<1)
-		rcall	menu_ram_init
 		
-		ldi	XL,low(menu_ram)
-		ldi	XH,high(menu_ram)
-		
-		ldi	temp,2
-		st	X+,temp
-		ldi	temp,3
-		st	X+,temp
-		ldi	temp,5
-		st	X+,temp
-		ldi	temp,6
-		st	X+,temp
-		ldi	temp,MENU_END
-		st	X,temp
-		
-		rcall	menu_ram_setpos
-menu_reverse_1:
-		rcall	menu_ram_loop
-		sbrs	statush,MENU_CHANGED
-		rjmp	menu_reverse_1
-		
-		lds	temp,menu_pos
-		cpi	temp,MENU_ESC
-		brne	menu_reverse_2
-		rjmp	main_menu
-menu_reverse_2:
-		
-		rjmp	menu_reverse_1
+		rjmp	menu_trim_rev
 menu_reverse_txt: .db	"Reverse",0
+;
 
 
 ;
@@ -2123,12 +2124,13 @@ task_calc_abs:
 ;   8 - min			2	1	(2x in)		X=min(A,B)
 ;   9 - max			2	1	(2x in)		X=max(A,B)
 ;   10 - delta			2	2	(2x in)		X=(A+B)/2, Y=(A-B)/2
-; * 11 - sub			2	1	(2x in)		X=A-B
+;   11 - sub			2	1	(2x in)		X=A-B
 ; * 12 - adder			2	1	(2x in)		X=A+B
 ;   13 - compare		2	1	(2x in)		X=0 if A=B,X=-1 if A<B, X=1 if A>B
 ;   14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
 ; * 15 - neg			1	1	(in)		X=-A
 ; * 16 - copy			1	1	(in)		X=A
+;   17 - expo			2	1	(in,rate)	X=A*(B*A*A+1-B)
 
 ; 1 - trim, 12 - add
 task_calc_add:
