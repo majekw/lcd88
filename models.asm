@@ -152,12 +152,12 @@
 ;		.db	model+(3<<6),20,28,"reverse for ch4",0,0
 ;
 ; simple 2 channel delta - minimalistic scenario without descriptions (and made without delta special block)
-; ch0 --trim--ch52--reverse--ch53--mul--ch54---add---out0
-;       ch28         ch40          ch32      \   \---------\
-;                                             \            |
-; ch1 --trim--ch55--reverse--ch56--mul--ch57--add---out1   |
-;       ch29         ch41          ch33   \                |
-;                                          -neg--ch58------/
+; ch0 ------------trim--ch52--reverse--ch53--mul--ch54---add---out0
+;                 ch28         ch40          ch32      \   \---------\
+;                                                       \            |
+; ch1 --expo--61--trim--ch55--reverse--ch56--mul--ch57--add---out1   |
+;        ch4      ch29         ch41          ch33   \                |
+;                                                    -neg--ch58------/
 ;
 ; ch2 --trim--ch59--reverse--out2
 ;       ch30         ch42
@@ -180,7 +180,7 @@
 		.db	model+(2<<6),6,43,0,0,4		;ch3 reverse (default 1 = no reverse)
 		;blocks
 		.db	model+(0<<6),10,1,0,1,2,1,0,28,52	;trim for ch0
-		.db	model+(0<<6),10,2,0,1,2,1,1,29,55	;trim for ch1
+		.db	model+(0<<6),10,2,0,1,2,1,61,29,55	;trim for ch1
 		.db	model+(0<<6),10,3,0,2,2,1,52,40,56	;rev for ch0
 		.db	model+(0<<6),10,4,0,2,2,1,55,41,53	;rev for ch1
 		.db	model+(0<<6),10,5,0,4,2,1,53,32,54	;mul for ch0
@@ -192,10 +192,11 @@
 		.db	model+(0<<6),10,11,0,1,2,1,3,31,60	;trim for ch3
 		.db	model+(0<<6),10,12,0,2,2,1,59,42,18	;rev for ch2
 		.db	model+(0<<6),10,13,0,2,2,1,60,43,19	;rev for ch03
+		.db	model+(0<<6),10,14,0,17,2,1,1,4,61	;expo for ch1
 		;decription
 		.db	model+(3<<6),14,0,"Delta 2CH!",0
 		;block processing order
-		.db	model+(1<<6),16,1,2,3,4,5,6,8,9,7,10,11,12,13,0
+		.db	model+(1<<6),16,14,1,2,3,4,5,6,8,9,7,10,11,12,13
 
 ; basic 4 ch model - for auto
 ;
