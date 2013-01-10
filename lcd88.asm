@@ -109,11 +109,12 @@
 ;		- functions to manage trims in eeprom
 ;		- storing trims in eeprom now works! :-)
 ;		- changing reverses
+;		- expo
 
 
 ;TODO
-; - expo ( x*(y*x*x+1-y) )
 ; - show channel details on separate screen
+; - show some info about flash and eeprom usage
 
 .nolist
 
@@ -645,9 +646,9 @@ menu_trims_5:
 		rjmp	menu_trims_6
 		;left pressed
 		mov	temp,temp5
-		cpi	temp,BLOCK_TRIM	;trim or reverse?
-		brne	menu_trims_5a
-		;left - trim
+		cpi	temp,BLOCK_REVERSE	;trim or reverse?
+		breq	menu_trims_5a
+		;left - trim (or others)
 		sbiw	XL,TRIM_STEP
 		rjmp	menu_trims_7
 menu_trims_5a:
@@ -661,8 +662,8 @@ menu_trims_6:
 		rjmp	menu_trims_4
 		;right pressed
 		mov	temp,temp5
-		cpi	temp,BLOCK_TRIM
-		brne	menu_trims_6a
+		cpi	temp,BLOCK_REVERSE
+		breq	menu_trims_6a
 		;right - trim
 		adiw	XL,TRIM_STEP
 		rjmp	menu_trims_7
@@ -2072,11 +2073,10 @@ task_calc_1:	;main processing loop (Z points to block number, temp contains numb
 		;breq	task_calc_abs
 		cpi	temp,15		;negation
 		breq	task_calc_neg
-		
 		cpi	temp,16		;copy
-		brne	task_calc_tcc
-		rjmp	task_calc_copy
-task_calc_tcc:
+		breq	task_calc_copy_f
+		cpi	temp,17		;expo
+		breq	task_calc_expo_f
 
 task_calc_99:	;end of main loop
 		pop	ZH
@@ -2086,6 +2086,9 @@ task_calc_99:	;end of main loop
 		brne	task_calc_1
 task_calc_e:
 		rjmp	task_switch_to_main	;end of this task
+		;far jumps
+task_calc_copy_f: rjmp	task_calc_copy
+task_calc_expo_f: rjmp	task_calc_expo
 		
 		;calculating... W=address of block for processing
 
@@ -2252,6 +2255,42 @@ task_calc_copy:
 		rjmp	task_calc_99
 ;
 
+
+; 17 - expo X=A*(B*A*A+1-B)
+task_calc_expo:
+		movw	ZL,WL
+		adiw	ZL,7
+		
+		lpm	temp,Z+		;get first channel number
+		rcall	math_push_channel	;on stack A
+		
+		rcall	math_dup	;duplicate A,A
+		rcall	math_dup	;again:-) A,A,A
+		rcall	math_mul	;A,A*A
+		
+		lpm	temp,Z
+		rcall	math_push_channel	;second channel A,A*A,B
+		rcall	math_mul	;A,A*A*B
+		
+		ldi	temp,low(L_ONE)	;push 1
+		mov	mtemp1,temp
+		ldi	temp,high(L_ONE)
+		mov	mtemp2,temp
+		rcall	math_push	;A,A*A*B,1
+		
+		rcall	math_add	;A,A*A*B+1
+		
+		lpm	temp,Z+		;once again B on stack
+		rcall	math_push_channel	;A,A*A*B+1,B
+		
+		rcall	math_sub	;A,A*A*B+1-B
+		
+		rcall	math_mul	;A*(A*A*B+1-B)
+		
+		lpm	temp,Z		;store result
+		rcall	math_pop_channel
+		rjmp	task_calc_99
+;
 
 
 ; #####################  MATH ROUTINES  ###########################
