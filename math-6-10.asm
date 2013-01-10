@@ -499,7 +499,7 @@ math_todec_byte:
 ; math stack
 .dseg
 math_sp:	.byte	2	;math stack pointer
-math_stack:	.byte	10	;stack area
+math_stack:	.byte	16	;stack area
 .cseg
 ;
 
