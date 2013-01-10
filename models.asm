@@ -44,6 +44,7 @@
 ; 14 - abs			1	1	(in)		X=X if X>=0, X=-X if X<0
 ; 15 - neg			1	1	(in)		X=-A
 ; 16 - copy			1	1	(in)		X=A
+; 17 - expo			2	1	(in,rate)	X=A*(B*A*A+1-B)
 
 ; specific blocks:
 ; 0 - block
