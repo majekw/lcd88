@@ -180,8 +180,8 @@
 		;blocks
 		.db	model+(0<<6),10,1,0,1,2,1,0,28,52	;trim for ch0
 		.db	model+(0<<6),10,2,0,1,2,1,1,29,55	;trim for ch1
-		.db	model+(0<<6),10,3,0,2,2,1,52,40,53	;rev for ch0
-		.db	model+(0<<6),10,4,0,2,2,1,55,41,56	;rev for ch1
+		.db	model+(0<<6),10,3,0,2,2,1,52,40,56	;rev for ch0
+		.db	model+(0<<6),10,4,0,2,2,1,55,41,53	;rev for ch1
 		.db	model+(0<<6),10,5,0,4,2,1,53,32,54	;mul for ch0
 		.db	model+(0<<6),10,6,0,4,2,1,56,33,57	;mul for ch1
 		.db	model+(0<<6),10,7,0,12,2,1,54,58,16	;add for ch0
