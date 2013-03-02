@@ -1,5 +1,5 @@
 ; Bootloader
-; (C) 2007-2012 Marek Wodzinski
+; (C) 2007-2013 Marek Wodzinski
 ;
 ; Changelog:
 ; 2007.11.16	- first code
@@ -13,6 +13,9 @@
 ; 2012.12.27	- run bootloader code only after external reset
 ;		- changed order of programming steps from erase-fill-write to fill-erase-write
 ;		- added support for Atmega328
+; 2013.03.02	- use F_CPU to calculate UBBR
+;		- ifdef to set other F_CPU for Arduino Pro Mini
+
 
 .ifdef M88
     .include "m88def.inc"
@@ -23,7 +26,11 @@
 	.ifdef M328
 	    .include "m328def.inc"
 	.else
-	    .error "No processor defined!"
+	    .ifdef M328P-16
+		.include "m328def.inc"
+	    .else
+		.error "No processor defined!"
+	    .endif
 	.endif
     .endif
 .endif
@@ -44,8 +51,11 @@
 .def	looplo=r24
 .def	loophi=r25
 
-
-.equ	F_CPU=11059200			;CLK
+.ifdef M328P-16
+    .equ        F_CPU=16000000
+.else
+    .equ        F_CPU=11059200
+.endif
 ;.equ	F_CPU=7372800
 ;.equ	RAM_START=0x100			;ram start
 .equ	REC_BUF=SRAM_START		;receive buffer
@@ -101,7 +111,7 @@ boot_start:
 		
 		;ldi	temp,0
 		sts	UBRR0H,temp3
-		ldi	temp,71		;speed: 9600 (47 for 7.3728, 51 for 8M, 71 for 11.0592M)
+		ldi	temp,F_CPU/16/9600-1	;serial speed: 9600 (47 for 7.3728, 51 for 8M, 71 for 11.0592M)
 		sts	UBRR0L,temp
 		
 		lds	temp,UDR0		;flush receiver

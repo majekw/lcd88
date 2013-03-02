@@ -112,6 +112,8 @@
 ;		- expo
 ; 2012.01.10	- menu for trimming expo
 ;		- show credits and memory free
+; 2013.03.02	- checked all code parts that depends of F_CPU
+;		- added support for Atmega328P with 16MHz cpu clock as in Arduino Pro Mini
 
 
 ;TODO
@@ -120,7 +122,7 @@
 
 .nolist
 
-;standard include headers
+;cpu specific include headers
 .ifdef M88
     .include "m88def.inc"
 .else
@@ -130,7 +132,11 @@
 	.ifdef M328
 	    .include "m328def.inc"
 	.else
-	    .error "No processor defined!"
+	    .ifdef M328P-16
+		.include "m328def.inc"
+	    .else
+		.error "No processor defined!"
+	    .endif
 	.endif
     .endif
 .endif
@@ -140,29 +146,35 @@
 ;.define DEBUG
 
 ; ******** CONSTANTS *********
-.equ	ZEGAR=11059200
-.equ	ZEGAR_MAX=ZEGAR/64/1000
-.equ	LCD_PWM=150000
-.equ	DEFAULT_SPEED=ZEGAR/16/9600-1
+
+; Arduino have other clock
+.ifdef M328P-16
+    .equ	F_CPU=16000000	;Arduino Pro mini
+.else
+    .equ	F_CPU=11059200	;my board
+.endif
+.equ	COUNT_1MS=F_CPU/64/1000	;maximum counter value for 1ms interrupt - works only up to 16MHz!
+.equ	LCD_PWM=150000		;LCD boost pwm frequency
+;.equ	DEFAULT_SPEED=F_CPU/16/9600-1	;divider for serial interface
 .equ	CHANNELS_MAX=252	;maximum number of channels, including internal, limited to 252 because of menu routines
-.equ	BLOCKS_MAX=128		;253 is absolute max
+.equ	BLOCKS_MAX=128		;253 is absolute max, each block=2B of ram, so on smaller cpus this value is limited
 .equ	EE_SIG1=0xaa		;first byte of eeprom signature
 .equ	EE_SIG2=0x55		;second byte of eeprom signature
 .equ	EE_VERSION=4		;must be changed if eeprom format will change
 .equ	TRIM_BYTES=10		;how much bytes are used to trim each a/c channel to produce -1..1 result
 .equ	PPM_INTERVAL=20		;20ms for each frame
-.equ	PPM_SYNC=ZEGAR*3/10000	;0.3ms
-.equ	PPM_FRAME=ZEGAR*PPM_INTERVAL/1000	;20ms
+.equ	PPM_SYNC=F_CPU*3/10000	;0.3ms
+.equ	PPM_FRAME=F_CPU*PPM_INTERVAL/1000	;20ms
 .equ	PPM_CHANNELS=8		;number of output channels
-.equ	PPM_MIN=ZEGAR*8/10000	;0.8ms - absolute minimum
-.equ	PPM_MAX=ZEGAR*22/10000	;2.2ms - absolute maximum
+.equ	PPM_MIN=F_CPU*8/10000	;0.8ms - absolute minimum
+.equ	PPM_MAX=F_CPU*22/10000	;2.2ms - absolute maximum
 .equ	MODEL_DELETED=5		;5th bit in header means that block is deleted
 .equ	CHANNEL_OUT=16		;first output channel
 .equ	CHANNEL_ZERO=24		;channel with constant 0
 .equ	CHANNEL_ONE=25		;channel with 1
 .equ	CHANNEL_MONE=26		;channel with -1
 .equ	CHANNEL_USERMOD=27	;first channel that can be modified by user
-;numbers
+; common numbers
 .equ	L_ZERO=0
 .equ	L_ONE= 0b0000010000000000	; 1 in 6.10
 .equ	L_MONE=0b1111110000000000	;-1 in 6.10
@@ -182,7 +194,7 @@
 .equ	KBD_PIN_2=PINB
 .equ	KBD_DDR_2=DDRB
 .equ	KBD_2=PORTB0
-.equ	KEY_UP=0		;keys in keys var
+.equ	KEY_UP=0		;keys in 'keys' variable
 .equ	KEY_DOWN=1
 .equ	KEY_LEFT=2
 .equ	KEY_RIGHT=3
@@ -206,7 +218,7 @@
 .equ	MENU_CHANGED=5		;menu item selected/esc or enter key pressed
 .equ	FMS_OUT=6		;output FMS PIC compatible frames via rs
 .equ	STATUS_CHANGED=7	;if set, redraw all status line
-;block types
+;some block types
 .equ	BLOCK_TRIM=1
 .equ	BLOCK_REVERSE=2
 .equ	BLOCK_EXPO=17
@@ -389,15 +401,15 @@ reset:
 		;clear ram
 		ldi	XL,low(SRAM_START)
 		ldi	XH,high(SRAM_START)
-		ldi	YL,low(SRAM_SIZE-2)
+		ldi	YL,low(SRAM_SIZE-2)		;not all ram :-)
 		ldi	YH,high(SRAM_SIZE-2)
 		rcall	clear_ram
 		
 		;initialize timers
 		;Timer0 - pwm for LCD backlight, 150kHz, 75% duty, output via OC0B, no prescaling
-		ldi	temp,(ZEGAR/LCD_PWM)	;150kHz
+		ldi	temp,(F_CPU/LCD_PWM)	;150kHz
 		out	OCR0A,temp
-		ldi	temp,(ZEGAR/LCD_PWM*75/100)	;75%
+		ldi	temp,(F_CPU/LCD_PWM*75/100)	;75%
 		out	OCR0B,temp
 		ldi	temp,(1<<COM0B1)+(1<<WGM01)+(1<<WGM00)	;OC0B out, fast PWM with CTC
 		out	TCCR0A,temp
@@ -406,11 +418,11 @@ reset:
 		sbi	DDRD,PD5
 		
 		;Timer1 - pwm for PPM
-		ldi	temp,high(PPM_SYNC*2)
+		ldi	temp,high(PPM_SYNC*2)	;whole impulse length
 		sts	OCR1AH,temp
 		ldi	temp,low(PPM_SYNC*2)
 		sts	OCR1AL,temp
-		ldi	temp,high(PPM_SYNC)
+		ldi	temp,high(PPM_SYNC)	;synchro pulse length
 		sts	OCR1BH,temp
 		ldi	temp,low(PPM_SYNC)
 		sts	OCR1BL,temp
@@ -431,9 +443,9 @@ reset:
 		sts	TCCR2A,temp
 		ldi	temp,(1<<CS22)	;/64
 		sts	TCCR2B,temp
-		ldi	temp,ZEGAR_MAX	;counting up to ZEGAR_MAX
+		ldi	temp,COUNT_1MS	;counting up to COUNT_1MS
 		sts	OCR2A,temp
-		sts	ASSR,zero	;na pewno synchroniczny
+		sts	ASSR,zero	;synchronous
 		ldi	temp,(1<<OCIE2A)	;interrupt on timer overflow
 		sts	TIMSK2,temp
 
@@ -2995,13 +3007,18 @@ out_buffer:	.byte	PPM_CHANNELS*2	;buffer for generating ppm
 ;               |_|      |_|         |_|     |_|
 ;
 ;     - start --->|<-1 ch->|<- 2 ch  ->|    >|-|<-0.3ms
+
+; counter max=((value+1024)/2048)*(F_CPU/1000)+(F_CPU/1000) = (F_CPU/1000)*(((value+1024)/2048)+1)=
+; = (F_CPU/1000)*(((value+1024)+2048)/2048) = F_CPU/1000/2048*(value+3072)
 ;
 ; timer clock: 11059200
-; sync pulse:	0.3ms ~= 3318 clk
-; minimum:	   1ms = 11059 clk
-; center:	 1.5ms = 16589 clk
-; max:		   2ms = 22118 clk
-; counter max=(value+1024)*5.3999+11059=(value+3072)*5.3999
+; counter max=(value+3072)*5.4
+; 5.4 in 6.10 = 5529.6 = 5530
+
+; for Arduino
+; timer clock: 16000000
+; counter max=(value+3072)*7.8125
+; 7.8125 in 6.10 = 8000
 
 ;
 ; calculate next counter value
@@ -3016,23 +3033,31 @@ ppm_calc:
 		cpi	itemp,PPM_CHANNELS	;last fake/synchro channel?
 		breq	ppm_calc_2
 		
-		;get value
-		lsl	itemp
-		ldi	XL,low(out_buffer)
+		;get channel value
+		lsl	itemp			;output channel must be <128
+		ldi	XL,low(out_buffer)	;calculate channel address
 		ldi	XH,high(out_buffer)
 		add	XL,itemp
 		adc	XH,zero
 		
-		ld	itemp3,X+		;get value
+		ld	itemp3,X+		;get channel value
 		ld	itemp4,X+
 		
 		;recalculate
 		ldi	itemp,high(3072)	;make 2..4 from -1..1
 		add	itemp4,itemp
 		
+.if F_CPU = 11059200
 		ldi	itemp,low(5529)		;5.3994
 		ldi	itemp2,high(5529)
-		
+.else
+    .if F_CPU = 16000000
+		ldi	itemp,low(8000)		;7.8125
+		ldi	itemp2,high(8000)
+    .else
+	.error "Unsupported F_CPU!"
+    .endif
+.endif
 		
 		mul	itemp3,itemp		;multiply shifted value by 5.3994
 		mov	XL,r1			;forget about r0, it's out of precision
