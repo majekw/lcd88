@@ -110,6 +110,8 @@
 ;		- storing trims in eeprom now works! :-)
 ;		- changing reverses
 ;		- expo
+; 2012.01.10	- menu for trimming expo
+;		- show credits and memory free
 
 
 ;TODO
@@ -207,6 +209,7 @@
 ;block types
 .equ	BLOCK_TRIM=1
 .equ	BLOCK_REVERSE=2
+.equ	BLOCK_EXPO=17
 ;menu constants
 .equ	MENU_ESC=0xff	;esc pressed
 .equ	MENU_END=0xfe	;end marker
@@ -513,19 +516,27 @@ main_menu_1:
 		
 		cpi	temp,0
 		breq	menu_trims
+		
+		cpi	temp,4
+		breq	menu_expo_f
 
 		cpi	temp,2		;model select
 		breq	model_select_f
 		
+		cpi	temp,5
+		breq	show_info_f
+		
 		rjmp	main_menu
 main_menu_def:	.db	"Main menu",0
-		.db	0,"Trims",0,1,"Reverse",0,2,"Model select",0,3,"Debug",0,0xff
+		.db	0,"Trims",0,1,"Reverse",0,4,"Expo",0,2,"Model select",0,5,"Info",0,3,"Debug",0,0xff
 ;
 
 ; # far jumps....
 model_select_f:	rjmp	model_select
 menu_debug_f:	rjmp	menu_debug
 menu_reverse_f:	rjmp	menu_reverse
+menu_expo_f:	rjmp	menu_expo
+show_info_f:	rjmp	show_info
 ;
 
 
@@ -721,6 +732,19 @@ menu_reverse_txt: .db	"Reverse",0
 
 
 ;
+; #
+menu_expo:
+		ldi	temp,BLOCK_EXPO		;search for expo
+		mov	temp5,temp
+		ldi	ZL,low(menu_expo_txt<<1)
+		ldi	ZH,high(menu_expo_txt<<1)
+		
+		rjmp	menu_trim_rev
+menu_expo_txt:	.db	"Expo ",0
+;
+
+
+;
 ; # menu debug
 menu_debug:
 		rcall	show_io_values	;draw something
@@ -815,6 +839,84 @@ model_select_e:
 		
 
 model_select_def:	.db	"Select model ",0
+;
+
+
+;
+; # show some info
+show_info:
+		;draw something
+		
+		;top bar
+		rcall	top_bar_clear
+		ldi	ZL,low(show_info_txt_1<<1)
+		ldi	ZH,high(show_info_txt_1<<1)
+		rcall	top_bar_text
+		
+		;copyright
+		rcall	menu_body_clear
+		m_lcd_set_bg	COLOR_WHITE
+		m_lcd_set_fg	COLOR_BLACK
+		ldi	ZL,low(show_info_txt_2<<1)
+		ldi	ZH,high(show_info_txt_2<<1)
+		rcall	lcd_text
+		
+		;flash free
+		ldi	ZL,low(show_info_txt_3<<1)
+		ldi	ZH,high(show_info_txt_3<<1)
+		rcall	lcd_text
+		
+		lds	temp3,storage_end
+		lds	temp4,storage_end+1
+		ldi	temp,low(flash_end<<1)
+		ldi	temp2,high(flash_end<<1)
+		sub	temp,temp3
+		sbc	temp2,temp4
+		push	temp
+		mov	temp,temp2
+		rcall	print_byte_hex
+		pop	temp
+		rcall	print_byte_hex
+		
+		;eeprom free
+		ldi	ZL,low(show_info_txt_4<<1)
+		ldi	ZH,high(show_info_txt_4<<1)
+		rcall	lcd_text
+
+		mov	temp3,zero		;count eeprom free memory
+		ldi	XL,low(ee_trims)
+		ldi	XH,high(ee_trims)
+		ldi	temp2,high(ee_trims_end)
+show_info_0:
+		rcall	eeprom_read		;get model id
+		cpi	temp,0xff		;free?
+		brne	show_info_0a
+		inc	temp3			;yes
+show_info_0a:
+		adiw	XL,4
+		cpi	XL,low(ee_trims_end)
+		cpc	XH,temp2
+		brcs	show_info_0
+		
+		mov	temp,temp3
+		rcall	print_byte_hex
+		
+show_info_1:
+		rcall	show_out_bars
+		
+		lds	temp,keys	;check for ESC
+		andi	temp,(1<<KEY_ESC)
+		breq	show_info_1
+show_info_2:
+		lds	temp,keys	;wait for ESC release
+		andi	temp,(1<<KEY_ESC)
+		brne	show_info_2
+		rjmp	main_menu
+show_info_txt_1: .db	"Info ",0
+show_info_txt_2: .db	13,10,"LCD88 (C) 2009-2013",13
+		.db	10,"Marek Wodzinski",13,10,"http://majek.mamy.to",13,10,13,10,0,0
+show_info_txt_3: .db	"Flash free:  0x",0
+show_info_txt_4: .db	13,10,"Eeprom free: 0x",0
 ;
 
 
@@ -1171,25 +1273,26 @@ print_ch_hex:
 		call	calc_channel_addrY
 		
 		ldd	temp,Y+1		;high byte first
-		swap	temp
-		rcall	tohex
-		sts	lcd_arg1,temp
-		rcall	lcd_char
-		ldd	temp,Y+1
-		rcall	tohex
-		sts	lcd_arg1,temp
-		rcall	lcd_char
+		rcall	print_byte_hex
 
 		ld	temp,Y		;low byte
+		rjmp	print_byte_hex
+;
+
+
+;
+; # print byte in hex from temp
+; in: temp
+print_byte_hex:
+		push	temp
 		swap	temp
 		rcall	tohex
 		sts	lcd_arg1,temp
 		rcall	lcd_char
-		ld	temp,Y
+		pop	temp
 		rcall	tohex
 		sts	lcd_arg1,temp
 		rcall	lcd_char
-		
 		ret
 ;
 
