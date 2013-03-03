@@ -31,6 +31,14 @@
 .equ		CASET=0x15        ; column address setting
 .equ		PASET=0x75        ; page address setting
 
+;screen dimensions
+.ifdef lcd_rotated
+	.equ		DISP_W=176
+	.equ		DISP_H=132
+.else
+	.equ		DISP_W=132
+	.equ		DISP_H=176
+.endif
 
 ; ##### MACRO ##############################################
 ; #

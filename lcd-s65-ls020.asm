@@ -18,6 +18,14 @@
 .define		orient_normal		; normal orientation
 ;.define	orient_90		; rotated 90
 
+;screen dimensions
+.ifdef lcd_rotated
+	.equ		DISP_W=176
+	.equ		DISP_H=132
+.else
+	.equ		DISP_W=132
+	.equ		DISP_H=176
+.endif
 
 ; ##### MACRO ##############################################
 ; #

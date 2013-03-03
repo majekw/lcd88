@@ -15,7 +15,7 @@ compile: lcd88.hex
 
 bootloader: bootloader.hex
 
-lcd88.hex: bootloader.inc lcd88.asm lcd-s65.asm lcd-s65-ls020.asm lcd-s65-l2f50.asm math-6-10.asm models.asm Makefile
+lcd88.hex: bootloader.inc lcd88.asm lcd-s65.asm lcd-s65-ls020.asm lcd-s65-l2f50.asm lcd-s65-st7735.asm math-6-10.asm models.asm Makefile
 	$(ASM) --define $(DEVICE) --define $(FCK) lcd88.asm -l lcd88.lst
 
 

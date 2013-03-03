@@ -21,16 +21,21 @@
 ; 2009.06.08	- changed spi_tx to work on mega88
 ; 2009.11.20	- small comment
 ; 2012.12.27	- workaround bug in avra .ifndef
+; 2013.03.03	- new LCD hardware
+;		- screen dimensions moved to hardware specific files
+;		- calculate text resolution instead of hardcoding
+
 
 ; ##### CONFIG FEATURES ####################################
 ; #
 ;.define lcd_l2f50	;L2F50
-.define lcd_ls020	;LS020B
+;.define lcd_ls020	;LS020B
+.define lcd_st7735	;for 1.8" st7735 based TFT
 ;.define compile_lcd_test ;draw some pattern on whole screen
 ;.define compile_circle	;drawing circles
 ;.define compile_line	;drawing lines in any direction
 .define compile_text	;drawing text
-.define lcd_rotated
+.define lcd_rotated	;longer size of screen is width
 ;.define soft_spi	;use software spi
 ; #
 ; ##### CONFIG FEATURES ####################################
@@ -66,22 +71,6 @@
 ; text parameters
 .equ		CHAR_H=8
 .equ		CHAR_W=8
-;.equ		CHAR_H=5
-;.equ		CHAR_W=7
-.ifdef lcd_rotated
-.equ		DISP_W=176
-.equ		DISP_H=132
-.equ		TEXT_COL=22
-.equ		TEXT_ROW=16
-;.equ		TEXT_COL=35
-;.equ		TEXT_ROW=18
-.else
-.equ		DISP_W=132
-.equ		DISP_H=176
-.equ		TEXT_COL=16
-.equ		TEXT_ROW=22
-.endif
-
 ; colors
 .equ		COLOR_BLACK=	0x0000
 .equ		COLOR_WHITE=	0xffff
@@ -100,6 +89,23 @@
 .equ		COLOR_DKCYAN=	0b0000001111101111
 .equ		COLOR_GRAY=	0b0111101111101111
 
+
+;
+; low level lcd commands
+.ifdef lcd_l2f50
+.include "lcd-s65-l2f50.asm"
+.endif
+
+.ifdef lcd_ls020
+.include "lcd-s65-ls020.asm"
+.endif
+
+.ifdef lcd_st7735
+.include "lcd-s65-st7735.asm"
+.endif
+
+.equ	TEXT_COL=DISP_W/CHAR_W
+.equ	TEXT_ROW=DISP_H/CHAR_H
 
 ; ##### MACRO ##############################################
 ; #
@@ -320,7 +326,7 @@ lcd_spi_init:
 ;
 
 ;
-; # konfiguracja portów
+; # ports configuration
 lcd_port_init:
 		sbi	LCD_PORT_RS,LCD_RS	;initialize values
 		sbi	LCD_PORT_RESET,LCD_RESET
@@ -341,7 +347,7 @@ lcd_port_init:
 ;
 
 ;
-; #wy¶lij i co¶ po SPI, argumenty w temp
+; # send byte from 'temp' over SPI, 
 spi_tx:
 .ifdef soft_spi
 		;software spi
@@ -370,17 +376,6 @@ spi_tx1:	in	temp,SPSR
 .endif
                 ret			; done	;4+3    =67KB/s
 ;
-
-
-;
-; low level lcd commands
-.ifdef lcd_l2f50
-.include "lcd-s65-l2f50.asm"
-.endif
-
-.ifdef lcd_ls020
-.include "lcd-s65-ls020.asm"
-.endif
 
 ;
 ; # fill rectangle
