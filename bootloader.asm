@@ -26,11 +26,7 @@
 	.ifdef M328
 	    .include "m328def.inc"
 	.else
-	    .ifdef M328P-16
-		.include "m328def.inc"
-	    .else
-		.error "No processor defined!"
-	    .endif
+	    .error "No supported processor defined!"
 	.endif
     .endif
 .endif
@@ -51,10 +47,14 @@
 .def	looplo=r24
 .def	loophi=r25
 
-.ifdef M328P-16
+.ifdef FCK16
     .equ        F_CPU=16000000
 .else
-    .equ        F_CPU=11059200
+    .ifdef FCK11
+	.equ        F_CPU=11059200
+    .else
+	.error	"Unsupported FCK!"
+    .endif
 .endif
 ;.equ	F_CPU=7372800
 ;.equ	RAM_START=0x100			;ram start
@@ -72,7 +72,7 @@
 
 .cseg
 
-.ifdef	M328
+.ifdef M328
     .org	FIRSTBOOTSTART
 .else
     .org	SECONDBOOTSTART

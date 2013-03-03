@@ -132,11 +132,7 @@
 	.ifdef M328
 	    .include "m328def.inc"
 	.else
-	    .ifdef M328P-16
-		.include "m328def.inc"
-	    .else
-		.error "No processor defined!"
-	    .endif
+	    .error "No processor defined!"
 	.endif
     .endif
 .endif
@@ -147,11 +143,15 @@
 
 ; ******** CONSTANTS *********
 
-; Arduino have other clock
-.ifdef M328P-16
-    .equ	F_CPU=16000000	;Arduino Pro mini
+; Arduino have other clock frequency
+.ifdef FCK16
+    .equ        F_CPU=16000000	;Arduino Pro mini
 .else
-    .equ	F_CPU=11059200	;my board
+    .ifdef FCK11
+	.equ        F_CPU=11059200	;my board
+    .else
+	.error	"Unsupported FCK!"
+    .endif
 .endif
 .equ	COUNT_1MS=F_CPU/64/1000	;maximum counter value for 1ms interrupt - works only up to 16MHz!
 .equ	LCD_PWM=150000		;LCD boost pwm frequency
