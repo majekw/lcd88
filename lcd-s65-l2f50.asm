@@ -1,6 +1,6 @@
 ;
 ; Siemens S65 LCD (L2F50126) library
-; (C) 2007 Marek Wodzinski
+; (C) 2007-2013 Marek Wodzinski
 ; lcd_init, lcd_fill rect, lcd_dat0, lcd_cmd based on C sources
 ;	from Christian Kranz (L2F50_display4.02)
 ; other based on L2F50052T01 documentation
@@ -9,6 +9,7 @@
 ; 2007.11.14	- fork from lcd-s65 to support only model specific functions
 ; 2007.11.15	- lcd_char moved back to main lcd library
 ; 2007.12.16	- clear screen after init
+; 2013.03.03	- display dimensions moved here from lcd-s65.asm
 
 ; commands definitions
 .equ		DATCTL=0xBC         ; Data Control (data handling in RAM)

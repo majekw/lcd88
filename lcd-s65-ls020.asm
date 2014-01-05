@@ -1,6 +1,6 @@
 ;
 ; Siemens S65 LCD (L2F50126) library
-; (C) 2007 Marek Wodzinski
+; (C) 2007-2013 Marek Wodzinski
 ; lcd_init, lcd_fill rect, lcd_dat0, lcd_cmd based on C sources
 ;	from Christian Kranz (L2F50_display4.02)
 ; other based on L2F50052T01 documentation
@@ -13,6 +13,7 @@
 ;		  porting to mega88)
 ; 2009.06.10	- added rotated coordinates (based on global lcd_rotate)
 ; 2012.12.27    - workaround bug in avra .ifndef
+; 2013.03.03	- display dimensions moved here from lcd-s65.asm
 
 ; commands definitions
 .define		orient_normal		; normal orientation

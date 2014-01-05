@@ -1,83 +1,83 @@
-; Include file generated from bootloader.lst dated Sun Mar  3 22:33:56 CET 2013
+; Include file generated from bootloader.lst dated Sat Jun  8 23:37:18 CEST 2013
 .cseg
-.org	0x003f00
+.org	0x000f00
 boot_start:
 
-.org	0x003f22
+.org	0x000f22
 boot_wait:
 
-.org	0x003f26
+.org	0x000f26
 boot_menu:
 
-.org	0x003f29
+.org	0x000f29
 boot_menu1:
 
-.org	0x003f31
+.org	0x000f31
 boot_firmware:
 
-.org	0x003f34
+.org	0x000f34
 xmodem_start:
 
-.org	0x003f35
+.org	0x000f35
 xmodem_start1:
 
-.org	0x003f3e
+.org	0x000f3e
 xmodem_receive:
 
-.org	0x003f46
+.org	0x000f46
 xmodem_receive1:
 
-.org	0x003f5a
+.org	0x000f5a
 xmodem_end:
 
-.org	0x003f5d
+.org	0x000f5d
 boot_end:
 
-.org	0x003f63
+.org	0x000f63
 boot_print:
 
-.org	0x003f68
+.org	0x000f68
 boot_print1:
 
-.org	0x003f69
+.org	0x000f69
 boot_tx_char:
 
-.org	0x003f70
+.org	0x000f70
 boot_rx_char:
 
-.org	0x003f74
+.org	0x000f74
 boot_rx_char1:
 
-.org	0x003f7e
+.org	0x000f7e
 boot_rx_char2:
 
-.org	0x003f81
+.org	0x000f81
 boot_rx_char3:
 
-.org	0x003f83
+.org	0x000f83
 boot_block_write:
 
-.org	0x003f83
+.org	0x000f83
 boot_fill_page:
 
-.org	0x003f84
+.org	0x000f84
 boot_fill_page1:
 
-.org	0x003f8e
+.org	0x000f8e
 boot_erase_page:
 
-.org	0x003f90
+.org	0x000f90
 boot_write_page:
 
-.org	0x003f9b
+.org	0x000f9b
 boot_spm:
 
-.org	0x003FA1
+.org	0x000FA1
 boot_banner1:
 
-.org	0x003FCE
+.org	0x000FCE
 boot_banner2:
 
-.org	0x003FD5
+.org	0x000FD5
 boot_banner3:
 

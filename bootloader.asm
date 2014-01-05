@@ -26,7 +26,11 @@
 	.ifdef M328
 	    .include "m328def.inc"
 	.else
-	    .error "No supported processor defined!"
+	    .ifdef M8
+		.include "m8.inc"
+	    .else
+		.error "No supported processor defined!"
+	    .endif
 	.endif
     .endif
 .endif

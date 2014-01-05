@@ -936,7 +936,7 @@ show_info_txt_4: .db	13,10,"Eeprom free: 0x",0
 ; helpers for drawing/using menu area
 top_bar_clear:
 		m_lcd_set_fg	COLOR_DKRED	;set upper part (for menu name)
-		m_lcd_fill_rect	0,0,DISP_W,8
+		m_lcd_fill_rect	0,0,DISP_W,CHAR_H
 		ret
 ;
 top_bar_text:
@@ -946,22 +946,23 @@ top_bar_text:
 		rcall	lcd_text
 		ret
 ;
+.equ	BODY_H=12
 menu_body_clear:
 		m_lcd_set_fg	COLOR_WHITE	;clear rest of screen
-		m_lcd_fill_rect	0,8,DISP_W,12*8
+		m_lcd_fill_rect	0,8,DISP_W,BODY_H*CHAR_H
 		ret
 ;
 
 
 ;
 ; redraw status line
-.equ	STATUS_LINE_Y=13*8
+.equ	STATUS_LINE_Y=(1+BODY_H)*CHAR_H		;(status line + body) 
 show_status:
 		sbrs	statush,STATUS_CHANGED
 		ret
 		;set background
 		m_lcd_set_fg	COLOR_BLACK
-		m_lcd_fill_rect	0,STATUS_LINE_Y,DISP_W,3*8+4
+		m_lcd_fill_rect	0,STATUS_LINE_Y,DISP_W,DISP_H-STATUS_LINE_Y
 		
 		;model name
 		rcall	show_model_name
@@ -978,9 +979,9 @@ show_status:
 ; show model name
 show_model_name:
 		m_lcd_set_fg	COLOR_DKBLUE
-		m_lcd_fill_rect	0,STATUS_LINE_Y,DISP_W,8
+		m_lcd_fill_rect	0,STATUS_LINE_Y,DISP_W,CHAR_H
 
-		m_lcd_text_pos	0,13
+		m_lcd_text_pos	0,(1+BODY_H)
 		m_lcd_set_bg	COLOR_DKBLUE
 		m_lcd_set_fg	COLOR_YELLOW
 		sbrs	status,MODEL_CHANGED
@@ -997,10 +998,11 @@ show_model_name_1:
 
 ;
 ; draw bars of output channels (height is fixed to 16)
-.equ		OUT_BARS_X=14*8-1
-.equ		OUT_BARS_Y=8*14+1
-.equ		OUT_BARS_WIDTH=6
-.equ		OUT_BARS_SPACE=2
+.equ		OUT_BARS_WIDTH=6	;bar width
+.equ		OUT_BARS_SPACE=2	;space between bars
+.equ		OUT_BARS_X=DISP_W-8*(OUT_BARS_WIDTH+OUT_BARS_SPACE)-1	;X coordinate of first bar
+;.equ		OUT_BARS_Y=CHAR_H*(1+BODY_H+1)+1
+.equ		OUT_BARS_Y=DISP_H-19
 show_out_bars:
 		ldi	temp2,PPM_CHANNELS	;8 channels
 show_out_bars_1:
