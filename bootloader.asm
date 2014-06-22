@@ -18,6 +18,7 @@
 ; 2013.03.02	- use F_CPU to calculate UBBR
 ;		- ifdef to set other F_CPU for Arduino Pro Mini
 ; 2014.06.22	- added GPL license
+;		- removed leftovers from Atmega8 support
 
 .ifdef M88
     .include "m88def.inc"
@@ -28,11 +29,7 @@
 	.ifdef M328
 	    .include "m328def.inc"
 	.else
-	    .ifdef M8
-		.include "m8.inc"
-	    .else
-		.error "No supported processor defined!"
-	    .endif
+	    .error "No supported processor defined!"
 	.endif
     .endif
 .endif
