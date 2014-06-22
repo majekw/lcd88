@@ -5,6 +5,8 @@
 ;	from Christian Kranz (L2F50_display4.02)
 ; other based on L2F50052T01 documentation
 ;
+; This code is under terms and conditions of GNU GPL v3 license
+;
 ; Changelog
 ; 2007.11.14	- fork from lcd-s65 to support only model specific functions
 ; 2007.11.15	- finished most of porting
@@ -14,6 +16,7 @@
 ; 2009.06.10	- added rotated coordinates (based on global lcd_rotate)
 ; 2012.12.27    - workaround bug in avra .ifndef
 ; 2013.03.03	- display dimensions moved here from lcd-s65.asm
+; 2014.06.22	- added GPL license
 
 ; commands definitions
 .define		orient_normal		; normal orientation

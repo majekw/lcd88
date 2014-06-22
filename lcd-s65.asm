@@ -1,6 +1,8 @@
 ;
 ; Siemens S65 LCD library
-; (C) 2007 Marek Wodzinski
+; (C) 2007-2014 Marek Wodzinski
+;
+; This code is under terms and conditions of GNU GPL v3 license
 ;
 ; Changelog
 ; 2007.02.13	- added first LCD code (initialisation)
@@ -24,6 +26,7 @@
 ; 2013.03.03	- new LCD hardware
 ;		- screen dimensions moved to hardware specific files
 ;		- calculate text resolution instead of hardcoding
+; 2014.06.22	- added GPL license
 
 
 ; ##### CONFIG FEATURES ####################################

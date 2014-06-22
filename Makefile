@@ -1,12 +1,12 @@
 # uncomment right device and don't forget to do 'make clean' after that!
-DEVICE	?= M88
+#DEVICE	?= M88
 #DEVICE	?= M168
 #DEVICE  ?= M328
-FCK = FCK11
+#FCK = FCK11
 
 # for Arduino Pro mini
-#DEVICE = M328
-#FCK = FCK16
+DEVICE = M328
+FCK = FCK16
 
 #assembler
 ASM	:= avra

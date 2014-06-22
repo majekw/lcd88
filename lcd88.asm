@@ -1,6 +1,8 @@
 ; (C) 2009-2013 Marek Wodzinski
 ; new ppm coder with color lcd
 ;
+; This code is under terms and conditions of GNU GPL v3 license
+;
 ; Changelog
 ; 2009.05.31	- initial code
 ; 2009.06.01	- added lcd code (non working)
@@ -114,6 +116,7 @@
 ;		- show credits and memory free
 ; 2013.03.02	- checked all code parts that depends of F_CPU
 ;		- added support for Atmega328P with 16MHz cpu clock as in Arduino Pro Mini
+; 2014.06.22	- added GPL license
 
 
 ;TODO

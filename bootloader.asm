@@ -1,5 +1,7 @@
 ; Bootloader
-; (C) 2007-2013 Marek Wodzinski
+; (C) 2007-2014 Marek Wodzinski
+;
+; This code is under terms and conditions of GNU GPL v3 license
 ;
 ; Changelog:
 ; 2007.11.16	- first code
@@ -15,7 +17,7 @@
 ;		- added support for Atmega328
 ; 2013.03.02	- use F_CPU to calculate UBBR
 ;		- ifdef to set other F_CPU for Arduino Pro Mini
-
+; 2014.06.22	- added GPL license
 
 .ifdef M88
     .include "m88def.inc"

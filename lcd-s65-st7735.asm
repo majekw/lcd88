@@ -1,12 +1,15 @@
 ;
 ; ST7735 display library
-; (C) 2013 Marek Wodzinski
+; (C) 2013-2014 Marek Wodzinski
+;
+; This code is under terms and conditions of GNU GPL v3 license
 ;
 ; Changelog
 ; 2013.03.02	- initial code
 ;		- init display
 ; 2013.03.03	- set area code, display dimensions moved here from lcd-s65.asm
 ; 2013.03.04	- code finished
+; 2014.06.22	- added GPL license
 
 
 ; commands definitions

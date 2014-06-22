@@ -1,5 +1,7 @@
 ; Fixed point math library: 6.10
-; (C) 2009-2013 Marek Wodzinski majek@mamy.to
+; (C) 2009-2014 Marek Wodzinski majek@mamy.to
+;
+; This code is under terms and conditions of GNU GPL v3 license
 ;
 ; Changelog:
 ; 2009.08.16	- start coding:
@@ -30,6 +32,7 @@
 ; 2012.01.05	- small size optimization (saved 24B)
 ; 2012.01.07	- another size oprimization in math_todec
 ;		- use mtemp5 instead of global temp3 in math_todec
+; 2014.06.22	- added GPL license
 
 ;
 ; initialize math stack pointer
