@@ -92,6 +92,7 @@ Hardware specific code for S65 lcd based on C sources from Christian Kranz
 Fonts: 8x8 I got from Linux sources, other fonts are probably from open source
 projetcs I don't remember :-(
 
+m88def.inc, m168def.inc and m328def.inc are made by Atmel.
 
 License
 -------
