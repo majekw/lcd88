@@ -27,6 +27,7 @@
 ;		- screen dimensions moved to hardware specific files
 ;		- calculate text resolution instead of hardcoding
 ; 2014.06.22	- added GPL license
+; 2014.06.23	- hardware spi_tx optimization
 
 
 ; ##### CONFIG FEATURES ####################################
@@ -372,10 +373,10 @@ spi_tx1:
 		pop	temp			;2
 .else
 		;hardware spi
-		out	SPDR,temp	; send over SPI		;2
-spi_tx1:	in	temp,SPSR
+spi_tx1:	in	temp,SPSR				;1
 		sbrs	temp,SPIF	; wait for empty SPDR	;2
 		rjmp	spi_tx1					;2
+		out	SPDR,temp	; send over SPI		;1
 .endif
                 ret			; done	;4+3    =67KB/s
 ;
