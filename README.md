@@ -63,7 +63,7 @@ Graphic LCD:
 - cheap 1.8" 160x128 tft based on ST7735, Arduino's GTFT should also work
 
 Keyboard: it's only one part that you must do yourself as it's non standard.
-Schematic will be available soon on project site.
+Schematic is in pcb/ directory (Eagle files)
 Required:
 - 6 tact switches
 - 6 diodes 1N4148
@@ -72,13 +72,14 @@ Required:
 Depending on AVR voltage and variant of LCD, level converter also could
 be required.
 
+For more info about hardware look at http://majek.mamy.to/en/lcd88-hardware/
 Models
 ------
 
 Of course you need some models definitions:-)
 
 For now, look into models.asm and try to figure out yourself how it works :-)
-More info how blocks works is at http://majek.mamy.to/en/rc-diy-transmitter/
+More info how blocks works is at http://majek.mamy.to/en/lcd88-how-it-works/
 
 
 Author(s)
