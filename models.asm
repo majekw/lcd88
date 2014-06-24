@@ -13,6 +13,20 @@
 ; 40-51 - reverse channels
 ; 52 - user channels
 
+; some constants from code, so it's better to use them than direct values
+; CHANNEL_OUT=16		;first output channel
+; CHANNEL_ZERO=24		;channel with constant 0
+; CHANNEL_ONE=25		;channel with 1
+; CHANNEL_MONE=26		;channel with -1
+; CHANNEL_USERMOD=27	;first channel that can be modified by user
+;
+; numbers:
+; L_ZERO=0
+; L_ONE= 0b0000010000000000	; 1 in 6.10
+; L_MONE=0b1111110000000000	;-1 in 6.10
+; L_M033=0b1111111010101011	;-0.33333
+; L_033= 0b0000000101010101	; 0.33333
+
 ;
 ; containter definition:
 ; 1 - model id + deleted + content type
@@ -94,18 +108,18 @@
 ;		.db	model+(2<<6),6,1,2,0,0		;adc1 input
 ;		.db	model+(2<<6),6,2,3,0,0		;adc2 input
 ;		.db	model+(2<<6),6,3,4,0,0		;adc3 input
-;		.db	model+(2<<6),6,16,5,0,0		;ch0 out
-;		.db	model+(2<<6),6,17,6,0,0		;ch1 out
-;		.db	model+(2<<6),6,18,7,0,0		;ch2 out
-;		.db	model+(2<<6),6,19,8,0,0		;ch3 out
-;		.db	model+(2<<6),6,28,9,0,0		;ch0 trim (default 0)
-;		.db	model+(2<<6),6,29,10,0,0	;ch1 trim
-;		.db	model+(2<<6),6,30,11,0,0	;ch2 trim
-;		.db	model+(2<<6),6,31,12,0,0	;ch3 trim
-;		.db	model+(2<<6),6,40,13,0,4	;ch0 reverse (default 1 = no reverse)
-;		.db	model+(2<<6),6,41,14,0,4	;ch1 reverse (default 1 = no reverse)
-;		.db	model+(2<<6),6,42,15,0,4	;ch2 reverse (default 1 = no reverse)
-;		.db	model+(2<<6),6,43,16,0,4	;ch3 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,CHANNEL_OUT+0,5,0,0	;ch0 out
+;		.db	model+(2<<6),6,CHANNEL_OUT+1,6,0,0	;ch1 out
+;		.db	model+(2<<6),6,CHANNEL_OUT+2,7,0,0	;ch2 out
+;		.db	model+(2<<6),6,CHANNEL_OUT+3,8,0,0	;ch3 out
+;		.db	model+(2<<6),6,28,9,low(L_ZERO),high(L_ZERO)		;ch0 trim (default 0)
+;		.db	model+(2<<6),6,29,10,low(L_ZERO),high(L_ZERO)	;ch1 trim
+;		.db	model+(2<<6),6,30,11,low(L_ZERO),high(L_ZERO)	;ch2 trim
+;		.db	model+(2<<6),6,31,12,low(L_ZERO),high(L_ZERO)	;ch3 trim
+;		.db	model+(2<<6),6,40,13,low(L_ONE),high(L_ONE)	;ch0 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,41,14,low(L_ONE),high(L_ONE)	;ch1 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,42,15,low(L_ONE),high(L_ONE)	;ch2 reverse (default 1 = no reverse)
+;		.db	model+(2<<6),6,43,16,low(L_ONE),high(L_ONE)	;ch3 reverse (default 1 = no reverse)
 ;		.db	model+(2<<6),6,52,0,0,0	;ch0 connection between trim and inverse
 ;		.db	model+(2<<6),6,53,0,0,0	;ch1 connection between trim and inverse
 ;		.db	model+(2<<6),6,54,0,0,0	;ch2 connection between trim and inverse
@@ -116,10 +130,10 @@
 ;		.db	model+(0<<6),10,2,22,1,2,1,1,29,53	;trim for ch1
 ;		.db	model+(0<<6),10,3,23,1,2,1,2,30,54	;trim for ch2
 ;		.db	model+(0<<6),10,4,24,1,2,1,3,31,55	;trim for ch3
-;		.db	model+(0<<6),10,5,25,2,2,1,52,40,16	;reverse for ch0
-;		.db	model+(0<<6),10,6,26,2,2,1,53,41,17	;reverse for ch1
-;		.db	model+(0<<6),10,7,27,2,2,1,54,42,18	;reverse for ch2
-;		.db	model+(0<<6),10,8,28,2,2,1,55,43,19	;reverse for ch3
+;		.db	model+(0<<6),10,5,25,2,2,1,52,40,CHANNEL_OUT+0	;reverse for ch0
+;		.db	model+(0<<6),10,6,26,2,2,1,53,41,CHANNEL_OUT+1	;reverse for ch1
+;		.db	model+(0<<6),10,7,27,2,2,1,54,42,CHANNEL_OUT+2	;reverse for ch2
+;		.db	model+(0<<6),10,8,28,2,2,1,55,43,CHANNEL_OUT+3	;reverse for ch3
 ;		
 ;		;block processing order
 ;		.db	model+(1<<6),10,1,2,3,4,5,6,7,8
@@ -168,16 +182,16 @@
 ; ch32=0.5	ch33=0.5
 .set	model=2
 		;channels
-		.db	model+(2<<6),6,28,0,0,0		;ch0 trim (default 0)
-		.db	model+(2<<6),6,29,0,0,0		;ch1 trim
-		.db	model+(2<<6),6,30,0,0,0		;ch2 trim
-		.db	model+(2<<6),6,31,0,0,0		;ch3 trim
-		.db	model+(2<<6),6,40,0,0,4		;ch0 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,41,0,0,4		;ch1 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,28,0,low(L_ZERO),high(L_ZERO)		;ch0 trim (default 0)
+		.db	model+(2<<6),6,29,0,low(L_ZERO),high(L_ZERO)		;ch1 trim
+		.db	model+(2<<6),6,30,0,low(L_ZERO),high(L_ZERO)		;ch2 trim
+		.db	model+(2<<6),6,31,0,low(L_ZERO),high(L_ZERO)		;ch3 trim
+		.db	model+(2<<6),6,40,0,low(L_ONE),high(L_ONE)		;ch0 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,41,0,low(L_ONE),high(L_ONE)		;ch1 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,32,0,0,2		;ch0 x0.5
 		.db	model+(2<<6),6,33,0,0,2		;ch1 x0.5
-		.db	model+(2<<6),6,42,0,0,4		;ch2 reverse (default 1 = no reverse)
-		.db	model+(2<<6),6,43,0,0,4		;ch3 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,42,0,low(L_ONE),high(L_ONE)		;ch2 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,43,0,low(L_ONE),high(L_ONE)		;ch3 reverse (default 1 = no reverse)
 		;blocks
 		.db	model+(0<<6),10,1,0,1,2,1,0,28,52	;trim for ch0
 		.db	model+(0<<6),10,2,0,1,2,1,61,29,55	;trim for ch1
@@ -185,13 +199,13 @@
 		.db	model+(0<<6),10,4,0,2,2,1,55,41,53	;rev for ch1
 		.db	model+(0<<6),10,5,0,4,2,1,53,32,54	;mul for ch0
 		.db	model+(0<<6),10,6,0,4,2,1,56,33,57	;mul for ch1
-		.db	model+(0<<6),10,7,0,12,2,1,54,58,16	;add for ch0
-		.db	model+(0<<6),10,8,0,12,2,1,54,57,17	;add for ch1
+		.db	model+(0<<6),10,7,0,12,2,1,54,58,CHANNEL_OUT+0	;add for ch0
+		.db	model+(0<<6),10,8,0,12,2,1,54,57,CHANNEL_OUT+1	;add for ch1
 		.db	model+(0<<6),10,9,0,15,1,1,57,58,0	;neg for inverse ch1
 		.db	model+(0<<6),10,10,0,1,2,1,2,30,59	;trim for ch2
 		.db	model+(0<<6),10,11,0,1,2,1,3,31,60	;trim for ch3
-		.db	model+(0<<6),10,12,0,2,2,1,59,42,18	;rev for ch2
-		.db	model+(0<<6),10,13,0,2,2,1,60,43,19	;rev for ch03
+		.db	model+(0<<6),10,12,0,2,2,1,59,42,CHANNEL_OUT+2	;rev for ch2
+		.db	model+(0<<6),10,13,0,2,2,1,60,43,CHANNEL_OUT+3	;rev for ch03
 		.db	model+(0<<6),10,14,0,17,2,1,1,4,61	;expo for ch1
 		;decription
 		.db	model+(3<<6),14,0,"Delta 2CH!",0
@@ -210,11 +224,11 @@
 		;.db	model+(2<<6),6,17,6,0,0		;ch1 out
 		;.db	model+(2<<6),6,18,7,0,0		;ch2 out
 		;.db	model+(2<<6),6,19,8,0,0		;ch3 out
-		.db	model+(2<<6),6,28,9,0,0		;ch0 trim (default 0)
-		.db	model+(2<<6),6,29,10,0,0	;ch1 trim
-		.db	model+(2<<6),6,30,11,0,0	;ch2 trim
-		.db	model+(2<<6),6,31,12,0,0	;ch3 trim
-		.db	model+(2<<6),6,40,13,low(L_MONE),high(L_MONE)	;ch0 reverse (default 1 = no reverse)
+		.db	model+(2<<6),6,28,9,low(L_ZERO),high(L_ZERO)	;ch0 trim (default 0)
+		.db	model+(2<<6),6,29,10,low(L_ZERO),high(L_ZERO)	;ch1 trim
+		.db	model+(2<<6),6,30,11,low(L_ZERO),high(L_ZERO)	;ch2 trim
+		.db	model+(2<<6),6,31,12,low(L_ZERO),high(L_ZERO)	;ch3 trim
+		.db	model+(2<<6),6,40,13,low(L_MONE),high(L_MONE)	;ch0 reverse (default -1 = reverse)
 		.db	model+(2<<6),6,41,14,low(L_ONE),high(L_ONE)	;ch1 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,42,15,low(L_ONE),high(L_ONE)	;ch2 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,43,16,low(L_ONE),high(L_ONE)	;ch3 reverse (default 1 = no reverse)
@@ -228,10 +242,10 @@
 		.db	model+(0<<6),10,2,22,1,2,1,1,29,53	;trim for ch1
 		.db	model+(0<<6),10,3,23,1,2,1,2,30,54	;trim for ch2
 		.db	model+(0<<6),10,4,24,1,2,1,3,31,55	;trim for ch3
-		.db	model+(0<<6),10,5,25,2,2,1,52,40,16	;reverse for ch0
-		.db	model+(0<<6),10,6,26,2,2,1,53,41,17	;reverse for ch1
-		.db	model+(0<<6),10,7,27,2,2,1,54,42,18	;reverse for ch2
-		.db	model+(0<<6),10,8,28,2,2,1,55,43,19	;reverse for ch3
+		.db	model+(0<<6),10,5,25,2,2,1,52,40,CHANNEL_OUT+0	;reverse for ch0
+		.db	model+(0<<6),10,6,26,2,2,1,53,41,CHANNEL_OUT+1	;reverse for ch1
+		.db	model+(0<<6),10,7,27,2,2,1,54,42,CHANNEL_OUT+2	;reverse for ch2
+		.db	model+(0<<6),10,8,28,2,2,1,55,43,CHANNEL_OUT+3	;reverse for ch3
 		
 		;block processing order
 		.db	model+(1<<6),10,1,2,3,4,5,6,7,8
@@ -285,11 +299,11 @@
 		;.db	model+(2<<6),6,21,6,0,0		;ch5 out
 		;.db	model+(2<<6),6,22,7,0,0		;ch6 out
 		;.db	model+(2<<6),6,23,8,0,0		;ch7 out
-		.db	model+(2<<6),6,28,0,0,0		;ch0 trim (default 0)
-		.db	model+(2<<6),6,29,0,0,0		;ch1 trim
-		.db	model+(2<<6),6,30,0,0,0		;ch2 trim
-		.db	model+(2<<6),6,31,0,0,0		;ch3 trim
-		.db	model+(2<<6),6,32,0,0,0		;ch4 trim
+		.db	model+(2<<6),6,28,0,low(L_ZERO),high(L_ZERO)		;ch0 trim (default 0)
+		.db	model+(2<<6),6,29,0,low(L_ZERO),high(L_ZERO)		;ch1 trim
+		.db	model+(2<<6),6,30,0,low(L_ZERO),high(L_ZERO)		;ch2 trim
+		.db	model+(2<<6),6,31,0,low(L_ZERO),high(L_ZERO)		;ch3 trim
+		.db	model+(2<<6),6,32,0,low(L_ZERO),high(L_ZERO)		;ch4 trim
 		.db	model+(2<<6),6,40,0,low(L_ONE),high(L_ONE)	;ch0 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,41,0,low(L_ONE),high(L_ONE)	;ch1 reverse (default 1 = no reverse)
 		.db	model+(2<<6),6,42,0,low(L_ONE),high(L_ONE)	;ch2 reverse (default 1 = no reverse)
@@ -308,15 +322,15 @@
 		.db	model+(0<<6),10,3,0,1,2,1,2,30,54	;trim for ch2
 		.db	model+(0<<6),10,4,0,1,2,1,3,31,55	;trim for ch3
 		.db	model+(0<<6),10,9,0,1,2,1,4,32,56	;trim for ch3
-		.db	model+(0<<6),10,5,0,2,2,1,52,40,16	;reverse for ch0
-		.db	model+(0<<6),10,6,0,2,2,1,53,41,17	;reverse for ch1
-		.db	model+(0<<6),10,7,0,2,2,1,54,42,18	;reverse for ch2
-		.db	model+(0<<6),10,8,0,2,2,1,55,43,19	;reverse for ch3
-		.db	model+(0<<6),10,10,0,2,2,1,56,44,20	;reverse for ch4
-		.db	model+(0<<6),10,11,0,5,1,1,5,21,0	;digital input for ch5
-		.db	model+(0<<6),10,12,0,5,1,1,6,22,0	;digital input for ch6
+		.db	model+(0<<6),10,5,0,2,2,1,52,40,CHANNEL_OUT+0	;reverse for ch0
+		.db	model+(0<<6),10,6,0,2,2,1,53,41,CHANNEL_OUT+1	;reverse for ch1
+		.db	model+(0<<6),10,7,0,2,2,1,54,42,CHANNEL_OUT+2	;reverse for ch2
+		.db	model+(0<<6),10,8,0,2,2,1,55,43,CHANNEL_OUT+3	;reverse for ch3
+		.db	model+(0<<6),10,10,0,2,2,1,56,44,CHANNEL_OUT+4	;reverse for ch4
+		.db	model+(0<<6),10,11,0,5,1,1,5,CHANNEL_OUT+5,0	;digital input for ch5
+		.db	model+(0<<6),10,12,0,5,1,1,6,CHANNEL_OUT+6,0	;digital input for ch6
 		.db	model+(0<<6),10,13,0,5,1,1,7,57,0	;digital input for ch7
-		.db	model+(0<<6),10,14,0,15,1,1,57,23,0	;reverse for ch7
+		.db	model+(0<<6),10,14,0,15,1,1,57,CHANNEL_OUT+7,0	;reverse for ch7
 
 		
 		;block processing order
